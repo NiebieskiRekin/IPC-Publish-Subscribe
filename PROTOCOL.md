@@ -21,12 +21,38 @@ enum MessageType {
   TopicsRequest = 8,
 };
 
-enum SubscriptionType { Permanent = 0, Temporary = 1, Unsubscribed = 2 };
+enum SubscriptionType {
+  Permanent = 0,
+  Temporary = 1,
+  Unsubscribed = 2,
+  OversubscribedTopic = 3
+};
+```
+```c
+typedef struct {
+  char name[128]; // Nazwa klienta
+  int msgid;      // Identyfikator kolejki odbiorczej klienta
+} Client;         // Wewnętrzna reprezentacja klienta po stronie serwera
 
 typedef struct {
   int topic_id;         // Identyfikator tematu
   char topic_name[128]; // Nazwa tematu
-} Topic;
+} Topic;                // Reprezentacja tematu przekazywana do klienta
+
+typedef struct {
+  int topic_id;                      // Identyfikator tematu
+  char topic_name[128];              // Nazwa tematu
+  unsigned int number_of_subscibers; // Liczba klientów subskrybujących temat
+  struct {
+    Client *subscriber;    // Tablica klientów subskrybujących temat
+    SubscriptionType type; // Informacje o subskrybcjach danych klientów
+    int duration;          // Pozostały czas trwania subskrybcji przejściowej
+  } subscriber_info[16];
+} Topic_; // Wewnętrzna reprezentacja tematu po stronie serwera
+
+Message messages[1024]; // Wiadomości przechowywane przez serwer
+Client Logged_in[16];   // Zalogowani klienci
+Topic_ topics[128];     // Dostępne tematy
 ```
 
 ### Logowanie
@@ -39,25 +65,34 @@ typedef struct {
   } LoginMessage;
   LoginMessage m_login_user = {Login, "...", 0x123};
   ```
-- pole *name* powinno być unikalne dla każdego klienta, ograniczone jest do 127 znaków ASCII
-- pole *msgid* powinno zawierać identyfikator kolejki, gdzie będą wysyłane komunikaty klienta
+- pole `name` powinno być unikalne dla każdego klienta, ograniczone jest do 127 znaków ASCII
+- pole `msgid` powinno zawierać identyfikator kolejki, gdzie będą wysyłane komunikaty klienta
 - uruchomienie programu serwera podaje klucz kolejki komunikatów na ekranie do której należy wysłać komunikat
 - serwer po otrzymaniu wiadomości weryfikuje podane informacje oraz wysyła potwierdzenie logowania:
-  - w przypadku poprawnego logowania dodaje klienta do listy zalogowanych oraz wysyła komunikat formatu: 
-    ```c
-    typedef struct {
-      long type;      // Typ komunikatu
-      char name[128]; // Nazwa klienta
-      int status;     // Stan logowania: 0 - błąd
-    } LoginStatus;
-    ```
-  - o treści:
-    ```c
-    LoginStatus m_login_error = {.type = Login, .name = "...", .status = 0};
-    ```
+  - w przypadku poprawnego logowania:
+    - dodaje klienta do tablicy zalogowanych klientów:
+      ```c
+      struct Client {
+        char name[128]; // Nazwa klienta
+        int msgid;      // Identyfikator kolejki odbiorczej klienta
+      } Logged_in[16];
+      ```
+
+    - następnie wysyła komunikat formatu: 
+      ```c
+      typedef struct {
+        long type;      // Typ komunikatu
+        char name[128]; // Nazwa klienta
+        int status;     // Stan logowania: 0 - błąd, 1 - ok
+      } LoginStatus;
+      ```
+    - o treści:
+      ```c
+      LoginStatus m_login_proper = {.type = Login, .name = "...", .status = 1};
+      ```
   - w przeciwnym przypadku wysyła komunikat powyższego formatu o treści: 
     ```c
-    LoginStatus m_login_proper = {.type = Login, .name = "...", .status = 1};
+    LoginStatus m_login_error = {.type = Login, .name = "...", .status = 0};
     ```
   
 ### Rejestracja odbiorcy (Subskrybcja tematu)
@@ -75,16 +110,31 @@ typedef struct {
     ```c
     SubscriptionMessage m_sub_temp = {Subscription, "...", 123, Temporary, 4};
     ```
-  - dla subskrybcji trwałej (np. temat 123), pole *duration* ignorowane
+  - dla subskrybcji trwałej (np. temat 123), pole `duration` ignorowane
     ```c
     SubscriptionMessage m_sub_perm = {Subscription, "...", 123, Permanent};
     ```
-- Serwer przechowuje informacje o zasubskrybowanych tematach dla każdego klienta w formie __TODO__
+- Serwer przechowuje informacje o klientach subskrybujących dany temat w tablicy:  
+  ```c
+  typedef struct {
+    int topic_id;                      // Identyfikator tematu
+    char topic_name[128];              // Nazwa tematu
+    unsigned int number_of_subscibers; // Liczba klientów subskrybujących temat
+    struct {
+      Client *subscriber;    // Wskaźnik do klienta subskrybującego temat
+      SubscriptionType type; // Informacje o subskrybcjach danych klientów
+      int duration;          // Pozostały czas trwania subskrybcji przejściowej
+    } subscriber_info[16];
+  } Topic_; // Wewnętrzna reprezentacja tematu po stronie serwera
+  Topic_ topics[128]
+  ```
+- Maksymalna liczba klientów subskrybujących temat to 16. Dopuszczalne jest istnienie maksymalnie 128 tematów.
+
 - Jeśli dany klient posiada już subskrypcję tematu: (obecna &rarr; wysłana)
-  - temp &rarr; temp: przedłużenie o *duration*, bądź skrócenie dla ujemnych wartości
-  - temp &rarr; perm: zamiana na *Permanent*
-  - perm &rarr; perm: brak zmian
-  - perm &rarr; temp: zamiana na *Temporary* o długości *duration*
+  - `Temporary` &rarr; `Temporary`: przedłużenie o `duration`, bądź skrócenie dla ujemnych wartości
+  - `Temporary` &rarr; `Permanent`: zamiana na `Permanent`
+  - `Permanent` &rarr; `Permanent`: brak zmian
+  - `Permanent` &rarr; `Temporary`: zamiana na `Temporary` o długości `duration`
 - Aby odsubskrybować temat (np. 123) należy wysłać komunikat:
   ```c
   SubscriptionMessage m_unsub = {Subscription, "...", 123, Unsubscribed};
@@ -94,6 +144,12 @@ typedef struct {
   typedef SubscriptionMessage SubscriptionStatus;
   SubscriptionStatus m_sub_stat = {Subscription, "...", 123, Unsubscribed, -1};
   ```
+
+- W przypadku gdy dany temat jest zasubskrybowany przez 16 klientów, to kolejne zapytania o subskrybcję zostaną odrzucone poprzez wiadomość:
+  ```c
+  SubscriptionStatus m_oversub_stat = {Subscription, "...", 123, OversubscribedTopic, -1};
+  ```
+  Wiadomości zawierające `{.sub=OversubscribedTopic}` wysłane do serwera są ignorowane.
 
 
 ### Rejestracja typu wiadomości (tematu)
@@ -142,21 +198,22 @@ typedef struct {
   } Message;
   Message m_message = {SendMessage, 123, "...", "Hello, World!", 7};
   ```
-- Wiadomości może są zapisywane w bazie __TODO__ 
+- Wiadomości są zapisywane w globalnej tablicy `Message messages[1024]`.
 - Następnie serwer rozsyła wiadomość do odpowiednich subskrybentów tematu o ile autor wiadmości nie został wcześniej zablokowany przez danego subskybenta.
 
 ## Odbiór wiadomości w sposób synchroniczny (blokujący)
 - Wiadomości kontrolne:
   - status logowania,
-  - status subskrybcji,
+  - status subskrybcji
   - status rejestracji nowego tematu
   - status zablokowania użytkownika 
+
 ## Odbiór wiadomości w sposób asynchroniczny
 - wiadomości odbierane przez serwer
 - wiadomości dotyczące tematu subskrybowanego przez użytkownika
  
 ## Zablokowanie użytkownika
-- format danych:
+- W celu zablokowanie użytkownika klient powienien wysłać wiadomość o następującym formacie danych:
   ```c
   typedef struct {
     long type;            // Typ komunikatu
@@ -165,17 +222,17 @@ typedef struct {
     int topic_id;         // Identyfikator tematu
   } BlockUserMessage;
   ```
-- na dany temat
+- Aby zablokować użytkownika `"blockMe"` na dany temat `123` należy wysłać wiadomość o treści:
   ```c
-  BlockUserMessage m_block_user_by_topic = {BlockUser, "...", "...", 123};
+  BlockUserMessage m_block_user_by_topic = {BlockUser, "...", "blockMe", 123};
   ```
-- wszędzie
+- Aby zablokować użytkownika `"blockMe"` na każdy temat należy wysłać wiadmość o treści:
   ```c
-  BlockUserMessage m_block_global = {BlockUser, "...", "...", 0};
+  BlockUserMessage m_block_global = {BlockUser, "...", "blockMe", 0};
   ```
 
 ## Lista dostępnych tematów - dodatkowo
-- Zapytanie
+- W celu otrzymania listy dostępnych tematów klient powienien wysłać wiadomość o formacie i treści:
   ```c
   typedef struct {
     long type;      // Typ komunikatu
@@ -183,22 +240,23 @@ typedef struct {
   } TopicsRequestMessage;
   TopicsRequestMessage m_request_topics = {TopicsRequest, "..."};
   ```
-- Odpowiedź 1.
-  ```c
-  typedef struct {
-    long type;                      // Typ komunikatu
-    unsigned long number_of_topics; // Liczba dostępnych tematów
-  } TopicsNumberMessage;
-  TopicsNumberMessage m_n_topics = {TopicsNumber, 2};
-  ```
-- Odpowiedź 2.
-  ```c
-  typedef struct {
-    long type;      // Typ komunikatu
-    Topic topics[]; // Tablica Tematów
-  } AvailableTopicsMessage;
+- Następnie serwer po otrzymaniu zapytania o listę tematów odeśle dwie wiadomości:
+  - Odpowiedź 1.
+    ```c
+    typedef struct {
+      long type;                      // Typ komunikatu
+      unsigned long number_of_topics; // Liczba dostępnych tematów
+    } TopicsNumberMessage;
+    TopicsNumberMessage m_n_topics = {TopicsNumber, 2};
+    ```
+  - Odpowiedź 2.
+    ```c
+    typedef struct {
+      long type;      // Typ komunikatu
+      Topic topics[]; // Tablica Tematów
+    } AvailableTopicsMessage;
 
-  AvailableTopicsMessage m_available_topics = {
-      .type = AvailableTopics,
-      .topics = {{1, "Hello, World!"}, {2, "Merry Chistmas!"}}};
-  ```
+    AvailableTopicsMessage m_available_topics = {
+        .type = AvailableTopics,
+        .topics = {{1, "Hello, World!"}, {2, "Merry Chistmas!"}}};
+    ```

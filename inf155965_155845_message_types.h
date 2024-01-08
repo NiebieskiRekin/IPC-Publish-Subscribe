@@ -18,12 +18,39 @@ enum MessageType {
   TopicsRequest = 8,
 };
 
-enum SubscriptionType { Permanent = 0, Temporary = 1, Unsubscribed = 2 };
+enum SubscriptionType {
+  Permanent = 0,
+  Temporary = 1,
+  Unsubscribed = 2,
+  OversubscribedTopic = 3
+};
+
+// Message messages[1024]; // Wiadomości przechowywane przez serwer
+
+typedef struct {
+  char name[128]; // Nazwa klienta
+  int msgid;      // Identyfikator kolejki odbiorczej klienta
+} Client;
+
+// Client Logged_in[16]; // Tablica zalogowanych klientów
 
 typedef struct {
   int topic_id;         // Identyfikator tematu
   char topic_name[128]; // Nazwa tematu
 } Topic;
+
+typedef struct {
+  int topic_id;                      // Identyfikator tematu
+  char topic_name[128];              // Nazwa tematu
+  unsigned int number_of_subscibers; // Liczba klientów subskrybujących temat
+  struct {
+    Client *subscriber;    // Tablica klientów subskrybujących temat
+    SubscriptionType type; // Informacje o subskrybcjach danych klientów
+    int duration;          // Pozostały czas trwania subskrybcji przejściowej
+  } subscriber_info[16];
+} Topic_;
+
+// Topic_ topics[128];
 
 typedef struct {
   long type;      // Typ komunikatu
@@ -36,7 +63,6 @@ typedef struct {
   char name[128]; // Nazwa klienta
   int status;     // Stan logowania: 0 - błąd
 } LoginStatus;
-
 
 typedef struct {
   long type;                 // Typ komunikatu
@@ -89,4 +115,3 @@ typedef struct {
   long type;      // Typ komunikatu
   Topic topics[]; // Tablica Tematów
 } AvailableTopicsMessage;
-
