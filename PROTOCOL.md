@@ -258,5 +258,18 @@ Topic_ topics[128];     // Dostępne tematy
 
     AvailableTopicsMessage m_available_topics = {
         .type = AvailableTopics,
-        .topics = {{1, "Hello, World!"}, {2, "Merry Chistmas!"}}};
+        .topics = {{1, "Topic1"}, {2, "Topic2"}}};
     ```
+
+# TODO:
+- [ ] opisz lepiej sposób przesyłania wiadomości przez osobne kolejki klientów i serwera
+- [ ] msgid to identyfikator kolejki komunikatów, ale nwm co z key, chyba można użyć `IPC_PRIVATE`
+- [ ] klient mógłby przesyłać nazwę, jak jest ok, to serwer zwraca `id`, którym klient musi się dalej posługiwać, potem np. tematy przechowują tylko `id` klienta zamiast wskaźnika
+- [ ] dla subskrybcji stałej pole `duration` wypełnione 0
+- [ ] przechowywanie info o zablokowanych klientach
+- [ ] rozdzielenie `Topic_` na dwie struktury: 
+  1. `topic_id`, `topic_name` i `id` klientów subskrybujących, 
+  2. `id` klienta, `topic_id`, sposób subskrybcji `sub`, sync czy async `sub_sync`,  blokowani klienci `blocked_id`
+- [ ] lista dostępnych tematów tylko druga odp z założeniem że n=max_liczba_tematów, sama liczba tematów w drugiej wiadomości
+- [ ] chyba w protokole założyłem domyślnie (trzeba dopisać), że wszystkie wiadomości są odbierane asynchronicznie, nie implementowałbym tej drugiej wersji jak nie trzeba
+- [ ] __dodaj sub synchroniczny / asynchroniczny__
