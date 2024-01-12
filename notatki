@@ -1,0 +1,3 @@
+- pole msgid przemianowane na queue_key 
+- aby się zalogować klient przesyła do kolejki serwera (której key jest widoczny globalnie przez wyświetlenie na ekranie) nazwę użytkownika i key kolejki przez jaką chce komunikować się z serwerem
+- 

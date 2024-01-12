@@ -6,6 +6,10 @@
 // │Tomasz Pawłowski 155965 │
 // │Jakub Kamieniarz 155845 │
 // └────────────────────────┘
+#ifndef MESSAGE_TYPES
+#define MESSAGE_TYPES
+
+#include <sys/msg.h>
 
 enum MessageType {
   Login = 1,
@@ -13,9 +17,6 @@ enum MessageType {
   NewTopic = 3,
   SendMessage = 4,
   BlockUser = 5,
-  AvailableTopics = 6,
-  TopicsNumber = 7,
-  TopicsRequest = 8,
 };
 
 enum SubscriptionType {
@@ -28,34 +29,33 @@ enum SubscriptionType {
 // Message messages[1024]; // Wiadomości przechowywane przez serwer
 
 typedef struct {
-  char name[128]; // Nazwa klienta
-  int msgid;      // Identyfikator kolejki odbiorczej klienta
+  char name[128];  // Nazwa klienta
+  int client_id;   // ID klienta
+  key_t queue_key; // Identyfikator kolejki odbiorczej klienta
 } Client;
 
 // Client Logged_in[16]; // Tablica zalogowanych klientów
 
 typedef struct {
-  int topic_id;         // Identyfikator tematu
-  char topic_name[128]; // Nazwa tematu
-} Topic;
+  int client_id;              // Identyfikator użytkownika
+  enum SubscriptionType type; // Informacje o subskrybcjach danych klientów
+  int duration;               // Pozostały czas trwania subskrybcji przejściowej
+  int blocked_ids[16];        // Zablokowani użytkownicy
+} SubInfo; // Struktura informacji o subskrybentach
 
 typedef struct {
-  int topic_id;                      // Identyfikator tematu
-  char topic_name[128];              // Nazwa tematu
-  unsigned int number_of_subscibers; // Liczba klientów subskrybujących temat
-  struct {
-    Client *subscriber;    // Tablica klientów subskrybujących temat
-    SubscriptionType type; // Informacje o subskrybcjach danych klientów
-    int duration;          // Pozostały czas trwania subskrybcji przejściowej
-  } subscriber_info[16];
-} Topic_;
+  int topic_id;         // Identyfikator tematu
+  char topic_name[128]; // Nazwa tematu
+  SubInfo subscriptions[16];
+} Topic;
+
 
 // Topic_ topics[128];
 
 typedef struct {
   long type;      // Typ komunikatu
   char name[128]; // Nazwa klienta
-  int msgid;      // Identyfikator kolejki odbiorczej klienta
+  key_t queue_key;      // Identyfikator kolejki odbiorczej klienta
 } LoginMessage;
 
 typedef struct {
@@ -101,17 +101,4 @@ typedef struct {
   int topic_id;         // Identyfikator tematu
 } BlockUserMessage;
 
-typedef struct {
-  long type;      // Typ komunikatu
-  char name[128]; // Nazwa klienta
-} TopicsRequestMessage;
-
-typedef struct {
-  long type;                      // Typ komunikatu
-  unsigned long number_of_topics; // Liczba dostępnych tematów
-} TopicsNumberMessage;
-
-typedef struct {
-  long type;      // Typ komunikatu
-  Topic topics[]; // Tablica Tematów
-} AvailableTopicsMessage;
+#endif // MESSAGE_TYPES

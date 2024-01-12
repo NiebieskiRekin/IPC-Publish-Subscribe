@@ -200,6 +200,7 @@ Topic_ topics[128];     // Dostępne tematy
   ```
 - Wiadomości są zapisywane w globalnej tablicy `Message messages[1024]`.
 - Następnie serwer rozsyła wiadomość do odpowiednich subskrybentów tematu o ile autor wiadmości nie został wcześniej zablokowany przez danego subskybenta.
+- Wiadomości odbierane są przez odpowiednich odbiorców w sposób asynchroniczny (wkrótce po wysłaniu wiadomości powinna zostać ona wyświetlona na ekranie odbiorcy).
 
 ## Odbiór wiadomości w sposób synchroniczny (blokujący)
 - Wiadomości kontrolne:
