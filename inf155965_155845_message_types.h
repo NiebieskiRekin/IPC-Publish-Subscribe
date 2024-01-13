@@ -26,15 +26,11 @@ enum SubscriptionType {
   OversubscribedTopic = 3
 };
 
-// Message messages[1024]; // Wiadomości przechowywane przez serwer
-
 typedef struct {
   char name[128];  // Nazwa klienta
   int client_id;   // ID klienta
-  key_t queue_key; // Identyfikator kolejki odbiorczej klienta
+  int queue;       // Identyfikator kolejki odbiorczej klienta
 } Client;
-
-// Client Logged_in[16]; // Tablica zalogowanych klientów
 
 typedef struct {
   int client_id;              // Identyfikator użytkownika
@@ -50,8 +46,6 @@ typedef struct {
 } Topic;
 
 
-// Topic_ topics[128];
-
 typedef struct {
   long type;      // Typ komunikatu
   char name[128]; // Nazwa klienta
@@ -62,6 +56,7 @@ typedef struct {
   long type;      // Typ komunikatu
   char name[128]; // Nazwa klienta
   int status;     // Stan logowania: 0 - błąd
+  int id;         // ID klienta
 } LoginStatus;
 
 typedef struct {
