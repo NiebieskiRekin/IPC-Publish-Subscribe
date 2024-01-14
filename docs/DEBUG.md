@@ -53,5 +53,6 @@
    ![Debugger](debugger_okno.png)
 
    1. Przechodzenie do kolejnych linii kodu i sterowanie wykonywaniem kodu
-   2. Podgląd na zmienne, jeśli globalne nie są widoczne to można je dodać w zakładce Watch 3. Ustawianie breakpoint na danej linii
+   2. Podgląd na zmienne, jeśli globalne nie są widoczne to można je dodać w zakładce Watch
+   3. Ustawianie breakpoint na danej linii
    4. Wybór okna terminala (przydane jeśli program prosi o wpisanie danych lub coś wyświetla na stdout)
