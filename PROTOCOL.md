@@ -157,10 +157,10 @@ Topic_ topics[128];     // Dostępne tematy
   ```c
   typedef struct {
       long type;            // Typ komunikatu
-      char name[128];       // Nazwa klienta
+      int client_id;        // ID klienta
       char topic_name[128]; // Nazwa tematu
   } NewTopicMessage;
-  NewTopicMessage m_topic = {NewTopic, "...", "..."};
+  NewTopicMessage m_topic = {NewTopic, 2, "..."};
   ```
 - Nazwa tematu powinna być unikatowa dla każdego tematu, składa się wyłącznie ze znaków ASCII o maksymalnej długości 127 znaków. 
 - następnie serwer sprawdza czy dany temat już istnieje
@@ -180,7 +180,7 @@ Topic_ topics[128];     // Dostępne tematy
       NewTopicStatus m_top_stat_error = {NewTopic, 0, "..."};
       ```
 
-    - jeśli nie, to do klienta odsyłany jest komunikat (poprzez wysłanie komunikatu do kolejki):
+    - jeśli nie, to do klienta odsyłany jest komunikat:
 
       ```c
       NewTopicStatus m_top_stat_proper = {NewTopic, 123, "..."};

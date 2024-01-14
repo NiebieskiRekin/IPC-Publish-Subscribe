@@ -8,6 +8,7 @@
 // └────────────────────────┘
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -21,6 +22,13 @@ NewTopicMessage m_new_topic = {.type = NewTopic};
 NewTopicStatus m_topic_status = {.type = NewTopic};
 Message m_text = {.type=SendMessage};
 BlockUserMessage m_block_user = {.type=BlockUser};
+
+int client_queue;
+
+void clean_exit(){
+  msgctl(client_queue, IPC_RMID, NULL);
+  exit(0);
+}
 
 int main() {
 
@@ -40,7 +48,7 @@ int main() {
   msgsnd(server_queue, &m_login, sizeof(m_login)-sizeof(long), 0);
   printf("Wysłano wiadomość logowania.\n");
 
-  int client_queue = msgget(user_queue_key, 0600 | IPC_CREAT);
+  client_queue = msgget(user_queue_key, 0600 | IPC_CREAT);
   msgrcv(client_queue, &m_login_status, sizeof(m_login_status)-sizeof(long), Login, 0);
   if (m_login_status.status){
     printf("Zalogowano jako:\n");
@@ -50,10 +58,48 @@ int main() {
     printf("Name: %s, ID: %d, Queue: %X\n", m_login_status.name, m_login_status.id, user_queue_key);
   }
 
-  printf("Any key to exit.\n");
-  char _[1];
-  scanf("%s", _); // wartość ignorowana
+  char* action = " ";
+  do {
+    printf("Wybierz akcję:\n");
+    printf("[1] Nowy temat\n");
+    printf("[2] Subskrybcja tematu\n");
+    printf("[3] Nowa wiadomość tekstowa\n");
+    printf("[4] Odczytaj wiadomości tekstowe\n");
+    printf("[5] Zablokuj użytkownika\n");
+    printf("[q] Wyjście\n");
 
-  msgctl(client_queue, IPC_RMID, NULL);
-  msgctl(server_queue, IPC_RMID, NULL);
+    scanf("%s",action);
+
+    switch (action[0]){
+
+      case '1':
+        break;
+
+      case '2':
+        
+        break;
+
+      case '3':
+        break;
+
+      case '4':
+        break;
+
+      case '5':
+        break;
+      
+      case ' ':
+        break;
+
+      case 'q':
+        clean_exit();
+        break;
+
+      default:
+        printf("Nieznana akcja.\n");
+        break;
+    }
+  }
+  while (action[0] != 'q');
+    
 }
