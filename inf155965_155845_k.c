@@ -51,7 +51,8 @@ int main() {
   }
 
   printf("Any key to exit.\n");
-  scanf("%*c"); // wartość ignorowana
+  char _[1];
+  scanf("%s", _); // wartość ignorowana
 
   msgctl(client_queue, IPC_RMID, NULL);
   msgctl(server_queue, IPC_RMID, NULL);

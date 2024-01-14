@@ -75,13 +75,13 @@ int is_duplicate_name(char name[128]){
 
 int main() {
   // Zwolnij zasoby przy Ctrl-C
-  signal(2, clean_exit);
+  signal(SIGINT, clean_exit);
   // Zainicjalizuj tablice danych 
   init();
 
   // Globalna kolejka serwera, 
   // key kolejki wyświetlany na ekranie przez proces serwera
-  msgget(server_key, 0600 | IPC_CREAT);
+  int server_queue = msgget(server_key, 0600 | IPC_CREAT);
   printf("Klucz kolejki serwera: %X\n", server_key);
 
   while (1) {
