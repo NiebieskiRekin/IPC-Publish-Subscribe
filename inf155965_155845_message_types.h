@@ -9,7 +9,9 @@
 #ifndef MESSAGE_TYPES
 #define MESSAGE_TYPES
 
+#include <sys/ipc.h>
 #include <sys/msg.h>
+
 
 enum MessageType {
   Login = 1,

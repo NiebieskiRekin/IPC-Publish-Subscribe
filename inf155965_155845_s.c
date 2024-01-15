@@ -35,10 +35,11 @@ int n_topics = 0;
 Message messages[MAX_MESSAGES];
 int n_message = 0;
 
-key_t server_key = 0x100;
+key_t server_key;
 int server_queue;
 
-void clean_exit() {
+void clean_exit(int signo) {
+  printf("\nZakończenie działania. Sygnał: %d\n",signo);
   for (int i = 0; i < MAX_CLIENTS; i++) {
     msgctl(logged_in[i].queue, IPC_RMID, NULL);
   }
@@ -47,7 +48,9 @@ void clean_exit() {
   exit(0);
 }
 
-void init() {
+void init(void) {
+  // Inicjalizacja klucza kolejki
+  server_key = getpid(); // should be unique
 
   // Inicjalizacja klientów
   for (int i = 0; i < MAX_CLIENTS; i++) {
@@ -79,7 +82,7 @@ int is_duplicate_topic(char topic[128]) {
   return 0;
 }
 
-int handle_new_topic() {
+int handle_new_topic(void) {
   printf("Nowy temat\n");
 
   if (m_new_topic.client_id == 0) {
@@ -102,15 +105,16 @@ int handle_new_topic() {
   strcpy(topics[n_topics].topic_name, m_new_topic.topic_name);
   printf("Dodano nowy temat:\n");
   printf("Temat: %s, ID: %d, Autor: %s\n", topics[n_topics].topic_name,
-         topics[n_topics].topic_id, logged_in[m_new_topic.client_id].name);
+         topics[n_topics].topic_id, logged_in[m_new_topic.client_id-1].name);
 
   // Wyślij potwierdzenie utworzenia nowego tematu do klienta
   m_topic_status.topic_id = n_topics + 1;
-  msgsnd(logged_in[m_new_topic.client_id].queue, &m_topic_status, sizeof(m_topic_status) - sizeof(long), 0);
+  msgsnd(logged_in[m_new_topic.client_id-1].queue, &m_topic_status, sizeof(m_topic_status) - sizeof(long), 0);
+  n_topics++;
   return 0;
 }
 
-int handle_login() {
+int handle_login(void) {
   printf("Nowe zapytanie o logowanie.\n");
 
   int queue_key = m_login.queue_key;
@@ -139,7 +143,7 @@ int handle_login() {
   m_login_status.status = 1;
 
   printf("Zalogowano klienta:\n");
-  printf("Name: %s, ID: %d, Queue: %X\n", m_login_status.name,
+  printf("Name: %s, ID: %d, Queue: 0x%x\n", m_login_status.name,
          m_login_status.id, m_login.queue_key);
 
   msgsnd(logged_in[n_logged].queue, &m_login_status,
@@ -148,7 +152,7 @@ int handle_login() {
   return 0;
 }
 
-int main() {
+int main(void) {
   // Zwolnij zasoby przy Ctrl-C
   signal(SIGINT, clean_exit);
   // Zainicjalizuj tablice danych
@@ -157,7 +161,7 @@ int main() {
   // Globalna kolejka serwera,
   // key kolejki wyświetlany na ekranie przez proces serwera
   server_queue = msgget(server_key, 0600 | IPC_CREAT);
-  printf("Klucz kolejki serwera: %X\n", server_key);
+  printf("Klucz kolejki serwera: 0x%x\n", server_key);
 
   while (1) {
 
