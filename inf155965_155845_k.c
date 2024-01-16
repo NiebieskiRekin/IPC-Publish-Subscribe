@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/msg.h>
+#include <sys/param.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -29,6 +30,7 @@ ReadMessage m_read = {.type=ReadMessages};
 int client_queue;
 int client_id;
 char username[128];
+int last_read_message = 0;
 
 void clean_exit(void){
   msgctl(client_queue, IPC_RMID, NULL);
@@ -140,9 +142,26 @@ int main(void) {
         break;
 
       case '3': // Nowa wiadomość
+        m_text.client_id = client_id;
+        printf("Podaj ID tematu, na który zostanie wysłana wiadomość: ");
+        scanf("%d",&m_text.topic_id);
+        getchar(); // Usuń znak \n
+        printf("Podaj priorytet wiadomości [0-9]: ");
+        scanf("%d",&m_text.priority);
+        m_text.priority = MAX(MIN(m_text.priority,9),0);
+        getchar(); // Usuń znak \n
+        printf("Podaj treść wiadomości: \n");
+        for (int i=0; i<MAX_MESSAGE_LENGTH; i++)
+          m_text.text[i] = ' ';
+        for (int i=0 ; scanf("%c",m_text.text+i) != EOF && i < MAX_MESSAGE_LENGTH-1; i++);
+        getchar(); // Usuń znak \n
+        m_text.text[MAX_MESSAGE_LENGTH-1] = '\0';
+        msgsnd(server_queue,&m_text,sizeof(m_text)-sizeof(long),0);
+        printf("Wysłano wiadomość.\n");
         break;
 
-      case '4': // Odczytaj wiadomosći
+      case '4': // Odczytaj wiadomości
+        
         break;
 
       case '5': // Zablokuj użytkownika

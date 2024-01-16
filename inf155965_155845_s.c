@@ -33,6 +33,7 @@ Topic topics[MAX_TOPICS];
 int n_topics = 0;
 Message messages[MAX_MESSAGES];
 int n_messages = 0;
+SubInfo subscriptions[MAX_SUBSCRIPTIONS];
 
 key_t server_key;
 int server_queue;
@@ -62,17 +63,31 @@ void init(void) {
   for (int i = 0; i < MAX_TOPICS; i++) {
     topics[i].topic_id = 0;
     strcpy(topics[i].topic_name, "\0");
-    for (int j = 0; j < MAX_SUBSCRIPTIONS_PER_TOPIC; j++) {
-      topics[i].subscriptions[j].client_id = 0;
-      topics[i].subscriptions[j].duration = 0;
-      topics[i].subscriptions[j].type = Unsubscribed;
-      for (int k = 0; k < MAX_BLOCKED_USERS; k++) {
-        topics[i].subscriptions[j].blocked_ids[k] = 0;
-      }
-    }
   }
 
+  // Inicjalizacja subskrybcji
+  for (int j = 0; j < MAX_SUBSCRIPTIONS; j++) {
+      subscriptions[j].client_id = 0;
+      subscriptions[j].duration = 0;
+      subscriptions[j].type = Unsubscribed;
+      subscriptions[j].topic_id = 0;
+      for (int k = 0; k < MAX_BLOCKED_USERS; k++) {
+        subscriptions[j].blocked_ids[k] = 0;
+      }
+    }
+
   // Inicjalizacja wiadomości tekstowych
+  for (int i=0; i<MAX_MESSAGES; i++){
+    messages[i].client_id = 0;
+    messages[i].priority = 0;
+    messages[i].topic_id = 0;
+    messages[i].type = SendMessage;
+
+    for (int j=0; j<MAX_MESSAGE_LENGTH-1; j++){
+      messages[i].text[j] = ' ';
+    }
+    messages[i].text[MAX_MESSAGE_LENGTH-1] = '\0';
+  }
 }
 
 int is_duplicate_name(char name[128]) {
@@ -95,14 +110,14 @@ int is_duplicate_topic(char topic[128]) {
 
 // Zwraca obecną subskrybcję tematu dla danego klienta lub następny wolny slot
 SubInfo *get_client_subscription(int client_id, int topic_id) {
-  for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_TOPIC; i++) {
-    SubInfo *sub = &topics[topic_id - 1].subscriptions[i];
-    if (sub->client_id == client_id) {
+  for (int i = 0; i < MAX_SUBSCRIPTIONS; i++) {
+    SubInfo *sub = subscriptions+i;
+    if (sub->client_id == client_id && sub->topic_id == topic_id) {
       return sub;
     }
   }
-  for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_TOPIC; i++) {
-    SubInfo *sub = &topics[topic_id - 1].subscriptions[i];
+  for (int i = 0; i < MAX_SUBSCRIPTIONS; i++) {
+    SubInfo *sub = subscriptions+i;
     if (sub->client_id == 0) {
       return sub;
     }
@@ -116,6 +131,48 @@ int client_logged(int client_id) {
 
 int topic_exists(int topic_id) {
   return (topic_id>0 && topic_id<MAX_TOPICS && topics[topic_id - 1].topic_id != 0);
+}
+
+int handle_receive_text(void){
+  printf("Nowa wiadomość.\n");
+  if (m_text.client_id == 0 || !client_logged(m_text.client_id)) {
+    printf("Nieznany klient. ID: %d\n", m_text.client_id);
+    return -1;
+  }
+  
+  if (!topic_exists(m_text.topic_id)) {
+    printf("Nieznany temat. ID: %d\n", m_text.topic_id);
+    return -1;
+  }
+
+  messages[n_messages].client_id = m_text.client_id;
+  messages[n_messages].priority = m_text.priority;
+  messages[n_messages].topic_id = m_text.topic_id;
+  strcpy(messages[n_messages].text,m_text.text);
+  n_messages++;
+
+  return 0;
+}
+
+int handle_send_text(void){
+  printf("Prośba o przesłanie wiadomości.\n");
+  if (m_read.client_id == 0 || !client_logged(m_read.client_id)) {
+    printf("Nieznany klient. ID: %d\n", m_read.client_id);
+    return -1;
+  }
+  // TODO
+  // if (!topic_exists(m_read.topic_id)) {
+  //   printf("Nieznany temat. ID: %d\n", m_text.topic_id);
+  //   return -1;
+  // }
+
+  // messages[n_messages].client_id = m_text.client_id;
+  // messages[n_messages].priority = m_text.priority;
+  // messages[n_messages].topic_id = m_text.topic_id;
+  // strcpy(messages[n_messages].text,m_text.text);
+  // n_messages++;
+
+  // return 0;
 }
 
 int handle_subscription(void) {
@@ -174,6 +231,7 @@ int handle_subscription(void) {
   sub_info->type = m_subscription.sub;
   m_sub_stat.sub = m_subscription.sub;
   m_sub_stat.duration = sub_info->duration;
+  sub_info->topic_id = m_subscription.topic_id;
   printf("Subskrybcja %d, długość: %d, ",sub_info->type,sub_info->duration);
   printf("klient ID: %d, Temat ID: %d\n",sub_info->client_id,m_sub_stat.topic_id);
 
@@ -289,13 +347,13 @@ int main(void) {
     // Nowa wiadomość tekstowa
     else if (msgrcv(server_queue, &m_text, sizeof(m_text) - sizeof(long),
                     SendMessage, IPC_NOWAIT) != -1) {
-      // TODO
+      handle_receive_text();
     }
 
     // Prośba o przesłanie nowych wiadomości
     else if (msgrcv(server_queue, &m_read, sizeof(m_read) - sizeof(long),
                     ReadMessages, IPC_NOWAIT) != -1) {
-      // TODO
+      handle_send_text();
     }
 
     // Blokowanie użytkownika

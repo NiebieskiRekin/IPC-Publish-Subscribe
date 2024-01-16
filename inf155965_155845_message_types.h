@@ -14,7 +14,7 @@
 #define MAX_CLIENTS 16
 #define MAX_TOPICS 128
 #define MAX_MESSAGES 1024
-#define MAX_SUBSCRIPTIONS_PER_TOPIC 16
+#define MAX_SUBSCRIPTIONS 128
 #define MAX_USERNAME_LENGTH 128
 #define MAX_TOPIC_LENTH 128
 #define MAX_BLOCKED_USERS 16
@@ -45,6 +45,7 @@ typedef struct {
 
 typedef struct {
   int client_id;              // Identyfikator użytkownika
+  int topic_id;               // Identyfikator tematu
   enum SubscriptionType type; // Informacje o subskrybcjach danych klientów
   int duration; // Pozostały czas trwania subskrybcji przejściowej
   int blocked_ids[MAX_BLOCKED_USERS]; // Zablokowani użytkownicy
@@ -53,7 +54,6 @@ typedef struct {
 typedef struct {
   int topic_id;                     // Identyfikator tematu
   char topic_name[MAX_TOPIC_LENTH]; // Nazwa tematu
-  SubInfo subscriptions[MAX_SUBSCRIPTIONS_PER_TOPIC];
 } Topic;
 
 typedef struct {
