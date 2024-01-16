@@ -11,17 +11,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/msg.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/param.h>
 #include <unistd.h>
-
-#define MAX_CLIENTS 16
-#define MAX_TOPICS 128
-#define MAX_MESSAGES 1024
 
 LoginMessage m_login = {.type = Login};
 LoginStatus m_login_status = {.type = Login};
 SubscriptionMessage m_subscription = {.type = Subscription};
+SubscriptionStatus m_sub_stat = {.type = Subscription};
 NewTopicMessage m_new_topic = {.type = NewTopic};
 NewTopicStatus m_topic_status = {.type = NewTopic};
 Message m_text = {.type = SendMessage};
@@ -33,13 +32,13 @@ int n_logged = 0;
 Topic topics[MAX_TOPICS];
 int n_topics = 0;
 Message messages[MAX_MESSAGES];
-int n_message = 0;
+int n_messages = 0;
 
 key_t server_key;
 int server_queue;
 
 void clean_exit(int signo) {
-  printf("\nZakończenie działania. Sygnał: %d\n",signo);
+  printf("\nZakończenie działania. Sygnał: %d\n", signo);
   for (int i = 0; i < MAX_CLIENTS; i++) {
     msgctl(logged_in[i].queue, IPC_RMID, NULL);
   }
@@ -60,6 +59,18 @@ void init(void) {
   }
 
   // Inicjalizacja tematów
+  for (int i = 0; i < MAX_TOPICS; i++) {
+    topics[i].topic_id = 0;
+    strcpy(topics[i].topic_name, "\0");
+    for (int j = 0; j < MAX_SUBSCRIPTIONS_PER_TOPIC; j++) {
+      topics[i].subscriptions[j].client_id = 0;
+      topics[i].subscriptions[j].duration = 0;
+      topics[i].subscriptions[j].type = Unsubscribed;
+      for (int k = 0; k < MAX_BLOCKED_USERS; k++) {
+        topics[i].subscriptions[j].blocked_ids[k] = 0;
+      }
+    }
+  }
 
   // Inicjalizacja wiadomości tekstowych
 }
@@ -79,6 +90,95 @@ int is_duplicate_topic(char topic[128]) {
       return 1;
     }
   }
+  return 0;
+}
+
+// Zwraca obecną subskrybcję tematu dla danego klienta lub następny wolny slot
+SubInfo *get_client_subscription(int client_id, int topic_id) {
+  for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_TOPIC; i++) {
+    SubInfo *sub = &topics[topic_id - 1].subscriptions[i];
+    if (sub->client_id == client_id) {
+      return sub;
+    }
+  }
+  for (int i = 0; i < MAX_SUBSCRIPTIONS_PER_TOPIC; i++) {
+    SubInfo *sub = &topics[topic_id - 1].subscriptions[i];
+    if (sub->client_id == 0) {
+      return sub;
+    }
+  }
+  return NULL;
+}
+
+int client_logged(int client_id) {
+  return (client_id>0 && client_id<MAX_CLIENTS && logged_in[client_id - 1].client_id != 0);
+}
+
+int topic_exists(int topic_id) {
+  return (topic_id>0 && topic_id<MAX_TOPICS && topics[topic_id - 1].topic_id != 0);
+}
+
+int handle_subscription(void) {
+  printf("Działanie na subskrybcji\n");
+  if (m_subscription.client_id == 0 || !client_logged(m_subscription.client_id)) {
+    printf("Nieznany klient. ID: %d\n", m_subscription.client_id);
+    return -1;
+  }
+
+  int client = m_subscription.client_id -1;
+  m_sub_stat.client_id = m_subscription.client_id;
+  m_sub_stat.topic_id = m_subscription.topic_id;
+
+  if (!topic_exists(m_subscription.topic_id)) {
+    printf("Nieznany temat. ID: %d\n", m_subscription.topic_id);
+    m_sub_stat.duration = -1;
+    m_sub_stat.sub = UnknownTopic;
+    msgsnd(logged_in[client].queue, &m_sub_stat,
+           sizeof(m_sub_stat) - sizeof(long), 0);
+    return -1;
+  }
+
+  SubInfo *sub_info = get_client_subscription(m_subscription.client_id,
+                                              m_subscription.topic_id);
+  if (sub_info == NULL) {
+    // Klient nie posiada subskrybcji oraz nie może zasubskrybować
+    printf("Temat ID: %d subskrybowany przez zbyt wiele osób", m_subscription.topic_id);
+    m_sub_stat.sub = OversubscribedTopic;
+    m_sub_stat.duration = -1;
+    msgsnd(logged_in[client].queue, &m_sub_stat,
+           sizeof(m_sub_stat) - sizeof(long), 0);
+    return -1;
+  }
+
+  switch (m_subscription.sub){
+    case Temporary:
+      sub_info->duration = MAX(sub_info->duration+m_subscription.duration,0);
+      sub_info->client_id = m_subscription.client_id;
+      break;
+    case Unsubscribed:
+      sub_info->client_id = 0;
+      for (int i=0; i<MAX_BLOCKED_USERS; i++){
+        sub_info->blocked_ids[i] = 0;
+      }
+      sub_info->duration = 0;
+      break;
+    case Permanent:
+      sub_info->duration = 0;
+      sub_info->client_id = m_subscription.client_id;
+      break;
+    default:
+      return -1;
+      break;
+  }
+
+  sub_info->type = m_subscription.sub;
+  m_sub_stat.sub = m_subscription.sub;
+  m_sub_stat.duration = sub_info->duration;
+  printf("Subskrybcja %d, długość: %d, ",sub_info->type,sub_info->duration);
+  printf("klient ID: %d, Temat ID: %d\n",sub_info->client_id,m_sub_stat.topic_id);
+
+  msgsnd(logged_in[client].queue, &m_sub_stat,
+         sizeof(m_sub_stat) - sizeof(long), 0);
   return 0;
 }
 
@@ -105,11 +205,12 @@ int handle_new_topic(void) {
   strcpy(topics[n_topics].topic_name, m_new_topic.topic_name);
   printf("Dodano nowy temat:\n");
   printf("Temat: %s, ID: %d, Autor: %s\n", topics[n_topics].topic_name,
-         topics[n_topics].topic_id, logged_in[m_new_topic.client_id-1].name);
+         topics[n_topics].topic_id, logged_in[m_new_topic.client_id - 1].name);
 
   // Wyślij potwierdzenie utworzenia nowego tematu do klienta
   m_topic_status.topic_id = n_topics + 1;
-  msgsnd(logged_in[m_new_topic.client_id-1].queue, &m_topic_status, sizeof(m_topic_status) - sizeof(long), 0);
+  msgsnd(logged_in[m_new_topic.client_id - 1].queue, &m_topic_status,
+         sizeof(m_topic_status) - sizeof(long), 0);
   n_topics++;
   return 0;
 }
@@ -182,20 +283,18 @@ int main(void) {
     else if (msgrcv(server_queue, &m_subscription,
                     sizeof(m_subscription) - sizeof(long), Subscription,
                     IPC_NOWAIT) != -1) {
-      // TODO
+      handle_subscription();
     }
 
     // Nowa wiadomość tekstowa
-    else if (msgrcv(server_queue, &m_text,
-                    sizeof(m_text) - sizeof(long), SendMessage,
-                    IPC_NOWAIT) != -1) {
+    else if (msgrcv(server_queue, &m_text, sizeof(m_text) - sizeof(long),
+                    SendMessage, IPC_NOWAIT) != -1) {
       // TODO
     }
 
     // Prośba o przesłanie nowych wiadomości
-    else if (msgrcv(server_queue, &m_read,
-                    sizeof(m_read) - sizeof(long), ReadMessages,
-                    IPC_NOWAIT) != -1) {
+    else if (msgrcv(server_queue, &m_read, sizeof(m_read) - sizeof(long),
+                    ReadMessages, IPC_NOWAIT) != -1) {
       // TODO
     }
 

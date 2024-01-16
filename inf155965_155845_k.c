@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/msg.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -18,6 +19,7 @@
 LoginMessage m_login = {.type = Login};
 LoginStatus m_login_status = {.type = Login, .status=0};
 SubscriptionMessage m_subscription = {.type = Subscription};
+SubscriptionStatus m_sub_stat = {.type = Subscription};
 NewTopicMessage m_new_topic = {.type = NewTopic};
 NewTopicStatus m_topic_status = {.type = NewTopic};
 Message m_text = {.type=SendMessage};
@@ -98,7 +100,43 @@ int main(void) {
         break;
 
       case '2': // Subskrybcja
-        
+        m_subscription.client_id = client_id;
+        printf("Podaj ID tematu:\n");
+        scanf("%d",&m_subscription.topic_id);
+        getchar(); // Usuń znak \n
+        m_subscription.sub = OversubscribedTopic;
+        printf("Odsubskrybuj = 0,\nZasubskrybuj trwale = 1,\nZasubskrybuj tymczasowo = 2\n");
+        do {
+          printf("Podaj rodzaj działania: ");
+          scanf("%d", (int*)(&m_subscription.sub));
+          getchar(); // Usuń znak \n
+        } while (m_subscription.sub > 2);
+        if (m_subscription.sub == Temporary){
+          printf("Podaj długość subskrybcji: ");
+          scanf("%d", &m_subscription.duration);
+          getchar(); // Usuń znak \n
+        } else {
+          m_subscription.duration = 0;
+        }
+        msgsnd(server_queue, &m_subscription, sizeof(m_subscription)-sizeof(long), 0);
+        msgrcv(client_queue, &m_sub_stat, sizeof(m_sub_stat)-sizeof(long), Subscription, 0);
+        switch (m_sub_stat.sub){
+          case Unsubscribed:
+            printf("Odsubskrybowano temat ID: %d\n", m_sub_stat.topic_id);
+            break;
+          case Temporary:
+            printf("Zapisano subskrybcję tymczasową tematu o ID: %d, na długość %d wiadomości.\n",m_sub_stat.topic_id,m_sub_stat.duration);
+            break;
+          case Permanent:
+            printf("Zapisano subskrybcję trwałą tematu o IDP %d.\n", m_sub_stat.topic_id);
+            break;
+          case OversubscribedTopic:
+            printf("Temat o ID: %d jest subskrybowany przez zbyt wiele osób.\n", m_sub_stat.topic_id);
+            break;
+          case UnknownTopic:
+            printf("Temat o podanym ID: %d nie istnieje.\n",m_sub_stat.topic_id);
+            break;
+        }
         break;
 
       case '3': // Nowa wiadomość
