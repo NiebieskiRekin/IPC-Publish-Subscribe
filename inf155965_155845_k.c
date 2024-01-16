@@ -130,7 +130,7 @@ int main(void) {
             printf("Zapisano subskrybcję tymczasową tematu o ID: %d, na długość %d wiadomości.\n",m_sub_stat.topic_id,m_sub_stat.duration);
             break;
           case Permanent:
-            printf("Zapisano subskrybcję trwałą tematu o IDP %d.\n", m_sub_stat.topic_id);
+            printf("Zapisano subskrybcję trwałą tematu o ID: %d.\n", m_sub_stat.topic_id);
             break;
           case OversubscribedTopic:
             printf("Temat o ID: %d jest subskrybowany przez zbyt wiele osób.\n", m_sub_stat.topic_id);
@@ -148,8 +148,8 @@ int main(void) {
         getchar(); // Usuń znak \n
         printf("Podaj priorytet wiadomości [0-9]: ");
         scanf("%d",&m_text.priority);
-        m_text.priority = MAX(MIN(m_text.priority,9),0);
         getchar(); // Usuń znak \n
+        m_text.priority = MAX(MIN(m_text.priority,9),0);
         printf("Podaj treść wiadomości: \n");
         for (int i=0; i<MAX_MESSAGE_LENGTH; i++)
           m_text.text[i] = ' ';
@@ -157,11 +157,22 @@ int main(void) {
         getchar(); // Usuń znak \n
         m_text.text[MAX_MESSAGE_LENGTH-1] = '\0';
         msgsnd(server_queue,&m_text,sizeof(m_text)-sizeof(long),0);
-        printf("Wysłano wiadomość.\n");
+        printf("\nWysłano wiadomość.\n");
         break;
 
       case '4': // Odczytaj wiadomości
-        
+        m_read.client_id = client_id;
+        printf("Podaj priorytet wiadomości [0-9]: ");
+        scanf("%d",&m_read.priority);
+        getchar(); // Usuń znak \n
+        m_read.priority = MAX(MIN(m_read.priority,9),0);
+        m_read.last_read = last_read_message;
+        msgsnd(server_queue,&m_read,sizeof(m_read)-sizeof(long),IPC_NOWAIT);
+        while(msgrcv(client_queue, &m_text, sizeof(m_text)-sizeof(long),SendMessage,0) && m_text.client_id!=0) {
+          printf("Temat ID: %d, Autor ID: %d, Priorytet: %d\n", m_text.topic_id,m_text.client_id,m_text.priority);
+          printf("%s\n",m_text.text);
+          last_read_message++;
+        }
         break;
 
       case '5': // Zablokuj użytkownika

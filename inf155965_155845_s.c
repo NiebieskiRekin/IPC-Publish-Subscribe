@@ -148,7 +148,7 @@ int handle_receive_text(void){
   messages[n_messages].client_id = m_text.client_id;
   messages[n_messages].priority = m_text.priority;
   messages[n_messages].topic_id = m_text.topic_id;
-  strcpy(messages[n_messages].text,m_text.text);
+  strcpy(messages[n_messages].text,m_text.text);  
   n_messages++;
 
   return 0;
@@ -160,19 +160,30 @@ int handle_send_text(void){
     printf("Nieznany klient. ID: %d\n", m_read.client_id);
     return -1;
   }
-  // TODO
-  // if (!topic_exists(m_read.topic_id)) {
-  //   printf("Nieznany temat. ID: %d\n", m_text.topic_id);
-  //   return -1;
-  // }
 
-  // messages[n_messages].client_id = m_text.client_id;
-  // messages[n_messages].priority = m_text.priority;
-  // messages[n_messages].topic_id = m_text.topic_id;
-  // strcpy(messages[n_messages].text,m_text.text);
-  // n_messages++;
+  SubInfo* client_sub[16];
+  int n_sub = 0;
 
-  // return 0;
+  for (int i=0; i<MAX_SUBSCRIPTIONS; i++){
+      if (subscriptions[i].client_id == m_read.client_id){
+        client_sub[n_sub] = subscriptions+i;
+        n_sub++;
+      }
+  }
+
+  for (int i=MIN(m_read.last_read,0);i<MAX_MESSAGES;i++){
+    for (int j=0;j<n_sub;j++){
+      if (messages[i].topic_id == client_sub[j]->topic_id){
+        m_text.client_id = messages[i].client_id;
+        m_text.topic_id = messages[i].topic_id;
+        m_text.priority = messages[i].priority;
+        strcpy(m_text.text,messages[i].text);
+        msgsnd(logged_in[m_text.client_id-1].queue,&m_text,sizeof(m_text)-sizeof(long),0);
+      }
+    }
+  }
+
+  return 0;
 }
 
 int handle_subscription(void) {

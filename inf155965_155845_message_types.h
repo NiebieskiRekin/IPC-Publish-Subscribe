@@ -110,6 +110,7 @@ typedef struct {
   long type;
   int client_id;
   int priority;
+  int last_read;
 } ReadMessage;
 
 #endif // MESSAGE_TYPES
