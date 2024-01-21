@@ -85,14 +85,13 @@ void init(void) {
     messages[i].type = SendMessage;
     messages[i].message_id = 0;
 
-    for (int j=0; j<MAX_MESSAGE_LENGTH-1; j++){
+    for (int j=0; j<MAX_MESSAGE_LENGTH+1; j++){
       messages[i].text[j] = '\0';
     }
-    messages[i].text[MAX_MESSAGE_LENGTH-1] = '\0';
   }
 }
 
-int is_duplicate_name(char name[128]) {
+int is_duplicate_name(char name[MAX_USERNAME_LENGTH+1]) {
   for (int i = 0; i < MAX_CLIENTS; i++) {
     if (strcmp(name, logged_in[i].name) == 0) {
       return 1;
@@ -101,7 +100,7 @@ int is_duplicate_name(char name[128]) {
   return 0;
 }
 
-int is_duplicate_topic(char topic[128]) {
+int is_duplicate_topic(char topic[MAX_TOPIC_LENTH+1]) {
   for (int i = 0; i < MAX_TOPICS; i++) {
     if (strcmp(topic, topics[i].topic_name) == 0) {
       return 1;
@@ -300,8 +299,8 @@ int handle_subscription(void) {
                                               m_subscription.topic_id);
   if (sub_info == NULL) {
     // Klient nie posiada subskrybcji oraz nie może zasubskrybować
-    printf("Temat ID: %d subskrybowany przez zbyt wiele osób", m_subscription.topic_id);
-    m_sub_stat.sub = OversubscribedTopic;
+    printf("Zbyt wiele subskrybcji w systemie.\n");
+    m_sub_stat.sub = Oversubscribed;
     m_sub_stat.duration = -1;
     msgsnd(logged_in[client].queue, &m_sub_stat,
            sizeof(m_sub_stat) - sizeof(long), 0);

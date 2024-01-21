@@ -15,10 +15,10 @@
 #define MAX_TOPICS 128
 #define MAX_MESSAGES 1024
 #define MAX_SUBSCRIPTIONS 128
-#define MAX_USERNAME_LENGTH 128
-#define MAX_TOPIC_LENTH 128
+#define MAX_USERNAME_LENGTH 127
+#define MAX_TOPIC_LENTH 127
 #define MAX_BLOCKED_USERS 16
-#define MAX_MESSAGE_LENGTH 2048
+#define MAX_MESSAGE_LENGTH 2047
 
 enum MessageType {
   Login = 1,
@@ -34,14 +34,14 @@ enum SubscriptionType {
   Unsubscribed = 0,
   Permanent = 1,
   Temporary = 2,
-  OversubscribedTopic = 3,
+  Oversubscribed = 3,
   UnknownTopic = 4,
 };
 
 typedef struct {
-  char name[MAX_USERNAME_LENGTH]; // Nazwa klienta
-  int client_id;                  // ID klienta
-  int queue;                      // Identyfikator kolejki odbiorczej klienta
+  char name[MAX_USERNAME_LENGTH+1]; // Nazwa klienta
+  int client_id;                    // ID klienta
+  int queue;                        // Identyfikator kolejki odbiorczej klienta
 } Client;
 
 typedef struct {
@@ -53,21 +53,21 @@ typedef struct {
 } SubInfo;                            // Struktura informacji o subskrybentach
 
 typedef struct {
-  int topic_id;                     // Identyfikator tematu
-  char topic_name[MAX_TOPIC_LENTH]; // Nazwa tematu
+  int topic_id;                         // Identyfikator tematu
+  char topic_name[MAX_TOPIC_LENTH + 1]; // Nazwa tematu
 } Topic;
 
 typedef struct {
-  long type;                      // Typ komunikatu
-  char name[MAX_USERNAME_LENGTH]; // Nazwa klienta
-  key_t queue_key;                // Identyfikator kolejki odbiorczej klienta
+  long type;                          // Typ komunikatu
+  char name[MAX_USERNAME_LENGTH + 1]; // Nazwa klienta
+  key_t queue_key; // Identyfikator kolejki odbiorczej klienta
 } LoginMessage;
 
 typedef struct {
-  long type;                      // Typ komunikatu
-  char name[MAX_USERNAME_LENGTH]; // Nazwa klienta
-  int status;                     // Stan logowania: 0 - błąd
-  int id;                         // ID klienta
+  long type;                          // Typ komunikatu
+  char name[MAX_USERNAME_LENGTH + 1]; // Nazwa klienta
+  int status;                         // Stan logowania: 0 - błąd
+  int id;                             // ID klienta
 } LoginStatus;
 
 typedef struct {
@@ -81,29 +81,29 @@ typedef struct {
 typedef SubscriptionMessage SubscriptionStatus;
 
 typedef struct {
-  long type;                        // Typ komunikatu
-  int client_id;                    // ID klienta
-  char topic_name[MAX_TOPIC_LENTH]; // Nazwa tematu
+  long type;                            // Typ komunikatu
+  int client_id;                        // ID klienta
+  char topic_name[MAX_TOPIC_LENTH + 1]; // Nazwa tematu
 } NewTopicMessage;
 
 typedef struct {
-  long type;                        // Typ komunikatu
-  int topic_id;                     // Identyfikator tematu = 0
-  char topic_name[MAX_TOPIC_LENTH]; // Nazwa tematu
+  long type;                            // Typ komunikatu
+  int topic_id;                         // Identyfikator tematu = 0
+  char topic_name[MAX_TOPIC_LENTH + 1]; // Nazwa tematu
 } NewTopicStatus;
 
 typedef struct {
-  long type;                     // Typ komunikatu
-  int message_id;                // Identyfikator wiadomości
-  int topic_id;                  // Identyfikator tematu
-  int client_id;                 // ID klienta
-  char text[MAX_MESSAGE_LENGTH]; // Treść wiadomości
-  int priority;                  // Priorytet wiadomości
+  long type;                         // Typ komunikatu
+  int message_id;                    // Identyfikator wiadomości
+  int topic_id;                      // Identyfikator tematu
+  int client_id;                     // ID klienta
+  char text[MAX_MESSAGE_LENGTH + 1]; // Treść wiadomości
+  int priority;                      // Priorytet wiadomości
 } Message;
 
 typedef struct {
-  long type;
-  int count;
+  long type; // Typ komunikatu
+  int count; // Liczba wiadomości spełniających kryteria
 } MessageCount;
 
 typedef struct {
@@ -114,10 +114,10 @@ typedef struct {
 } BlockUserMessage;
 
 typedef struct {
-  long type;
-  int client_id;
-  int priority;
-  int last_read;
+  long type;     // Typ komunikatu
+  int client_id; // ID klienta
+  int priority;  // priorytet wiadomości
+  int last_read; // ID ostatniej odczytanej wiadomości
 } ReadMessage;
 
 #endif // MESSAGE_TYPES

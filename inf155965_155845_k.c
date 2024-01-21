@@ -7,6 +7,7 @@
 // │Jakub Kamieniarz 155845 │
 // └────────────────────────┘
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,7 +31,7 @@ ReadMessage m_read = {.type=ReadMessages};
 
 int client_queue;
 int client_id;
-char username[128];
+char username[MAX_USERNAME_LENGTH+1];
 int last_read_message = 0;
 char* line = NULL;
 
@@ -55,7 +56,19 @@ int main(void) {
   while (m_login_status.status == 0){
     printf("Podaj nazwę użytkownika: \n");
     getline(&line,&len,stdin);
-    sscanf(line," %127[^\n] ",username); // odczyt max 127 znaków do nowej linii
+    // Trim and copy up to n
+    int i=0;
+    while (isspace(line[i])){
+      i++;
+    }
+    int line_size = strlen(line);
+    int j;
+    for (j=0; j<MAX_USERNAME_LENGTH && i<line_size && line[i]!='\n';j++){
+     username[j] = line[i];
+     i++; 
+    }   
+    username[j] = '\0';
+     
     key_t user_queue_key = getpid(); // should be unique
     m_login.queue_key=user_queue_key;
     strcpy(m_login.name,username);
@@ -95,8 +108,19 @@ int main(void) {
         m_new_topic.client_id = client_id;
         printf("Podaj nazwę tematu: \n");
         getline(&line,&len,stdin);
-        sscanf(line," %127[^\n] ",m_new_topic.topic_name);
-
+        // Trim and copy up to n
+        int i=0;
+        while (isspace(line[i])){
+          i++;
+        }
+        int line_size = strlen(line);
+        int j;
+        for (j=0; j<MAX_TOPIC_LENTH && i<line_size && line[i]!='\n';j++){
+         m_new_topic.topic_name[j] = line[i];
+         i++; 
+        }   
+        m_new_topic.topic_name[j] = '\0';
+   
         msgsnd(server_queue,&m_new_topic,sizeof(m_new_topic)-sizeof(long),0);
         msgrcv(client_queue,&m_topic_status,sizeof(m_topic_status)-sizeof(long),NewTopic,0);
         if (m_topic_status.topic_id == 0){
@@ -111,7 +135,7 @@ int main(void) {
         printf("Podaj ID tematu:\n");
         getline(&line,&len,stdin);
         sscanf(line," %d ",&m_subscription.topic_id);
-        m_subscription.sub = OversubscribedTopic;
+        m_subscription.sub = Oversubscribed;
         printf("Odsubskrybuj = 0,\nZasubskrybuj trwale = 1,\nZasubskrybuj tymczasowo = 2\n");
         do {
           printf("Podaj rodzaj działania: ");
@@ -137,8 +161,8 @@ int main(void) {
           case Permanent:
             printf("Zapisano subskrybcję trwałą tematu o ID: %d.\n", m_sub_stat.topic_id);
             break;
-          case OversubscribedTopic:
-            printf("Temat o ID: %d jest subskrybowany przez zbyt wiele osób.\n", m_sub_stat.topic_id);
+          case Oversubscribed:
+            printf("W systemie jest zbyt wiele subskrybcji.\n");
             break;
           case UnknownTopic:
             printf("Temat o podanym ID: %d nie istnieje.\n",m_sub_stat.topic_id);
@@ -158,11 +182,11 @@ int main(void) {
         m_text.priority = MAX(MIN(m_text.priority,9),0);
 
         printf("Podaj treść wiadomości: \n");
-        for (int i=0; i<MAX_MESSAGE_LENGTH; i++)
+        for (int i=0; i<MAX_MESSAGE_LENGTH+1; i++)
           m_text.text[i] = '\0';
 
         int char_count = 0;
-        while (char_count < MAX_MESSAGE_LENGTH-1 && getline(&line,&len,stdin) && line[0]!='\n'){
+        while (char_count < MAX_MESSAGE_LENGTH && getline(&line,&len,stdin) && line[0]!='\n'){
           strncat(m_text.text,line,MAX_MESSAGE_LENGTH-char_count-1);
           char_count += strlen(line);
         }
