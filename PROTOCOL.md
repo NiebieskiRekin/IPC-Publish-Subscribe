@@ -57,13 +57,13 @@ typedef struct {
   int priority;                  // Priorytet wiadomości
 } Message;
 
-Client logged_in[MAX_CLIENTS];            // Zalogowani klienci
-int n_logged = 0;                         // Liczba zalogowanych klientów
-Topic topics[MAX_TOPICS];                 // Tablica dostępnych tematów
-int n_topics = 0;                         // Liczba dostępnych tematów
-Message messages[MAX_MESSAGES];           // Tablica wysłanych wiadomości
-int n_messages = 0;                       // Liczba wiadomości w systemie
-SubInfo subscriptions[MAX_SUBSCRIPTIONS]; // Informacje o subskrybcjach
+Client logged_in[MAX_CLIENTS];                // Zalogowani klienci
+int n_logged = 0;                             // Liczba zalogowanych klientów
+Topic topics[MAX_TOPICS];                     // Tablica dostępnych tematów
+int n_topics = 0;                             // Liczba dostępnych tematów
+Message messages[N_PRIORITIES][MAX_MESSAGES]; // Tablica wysłanych wiadomości
+int n_messages[N_PRIORITIES] = {0,0,0};       // Liczba wiadomości w systemie
+SubInfo subscriptions[MAX_SUBSCRIPTIONS];     // Informacje o subskrybcjach
 ```
 
 ### Domyślne wartości parametrów wielkości struktur danych
@@ -76,6 +76,7 @@ SubInfo subscriptions[MAX_SUBSCRIPTIONS]; // Informacje o subskrybcjach
 #define MAX_TOPIC_LENTH 127
 #define MAX_BLOCKED_USERS 16
 #define MAX_MESSAGE_LENGTH 2047
+#define N_PRIORITIES 3
 ```
 
 ### Architektura systemu
@@ -247,7 +248,7 @@ SubInfo subscriptions[MAX_SUBSCRIPTIONS]; // Informacje o subskrybcjach
   Message m_text = {.type=SendMessage, ...};
   ```
 - Pole `message_id` nie jest wykorzystywane przy tworzeniu wiadomości. Służy do identyfikacji wiadomości przez serwer przy rozsyłaniu.
-- Wiadomości są zapisywane w globalnej tablicy `Message messages[MAX_MESSAGES]`.
+- Wiadomości są zapisywane w globalnej tablicy `Message messages[N_PRIORITIES][MAX_MESSAGES]` w zależności od priorytetu.
 - Do czasu przesłania zapytania o przesłanie nowych wiadomości nie są one przesyłane dalej.
 
 ## Odbiór wiadomości w sposób synchroniczny 

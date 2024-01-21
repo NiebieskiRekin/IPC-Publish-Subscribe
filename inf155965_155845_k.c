@@ -32,7 +32,7 @@ ReadMessage m_read = {.type=ReadMessages};
 int client_queue;
 int client_id;
 char username[MAX_USERNAME_LENGTH+1];
-int last_read_message = 0;
+int last_read_message[N_PRIORITIES] = {0,0,0};
 char* line = NULL;
 
 void clean_exit(int signo){
@@ -176,10 +176,10 @@ int main(void) {
         getline(&line,&len,stdin);
         sscanf(line, " %d ",&m_text.topic_id);
 
-        printf("Podaj priorytet wiadomości [0-9]: ");
+        printf("Podaj priorytet wiadomości [1-3]: ");
         getline(&line,&len,stdin);
         sscanf(line, " %d ",&m_text.priority);
-        m_text.priority = MAX(MIN(m_text.priority,9),0);
+        m_text.priority = MAX(MIN(m_text.priority,3),1);
 
         printf("Podaj treść wiadomości: \n");
         for (int i=0; i<MAX_MESSAGE_LENGTH+1; i++)
@@ -197,12 +197,14 @@ int main(void) {
 
       case '4': // Odczytaj wiadomości
         m_read.client_id = client_id;
-        printf("Podaj priorytet wiadomości [0-9]: ");
+        printf("Podaj priorytet wiadomości [1-3]: ");
         getline(&line,&len,stdin);
         sscanf(line, " %d ",&m_read.priority);
-        m_read.priority = MAX(MIN(m_read.priority,9),0);
+        m_read.priority = MAX(MIN(m_read.priority,3),1);
 
-        m_read.last_read = last_read_message;
+        for (int i=0; i<N_PRIORITIES; i++){
+          m_read.last_read[i] = last_read_message[i];
+        }
         int msg_read_now = 0;
         msgsnd(server_queue,&m_read,sizeof(m_read)-sizeof(long),0);
 
@@ -212,7 +214,8 @@ int main(void) {
         while(msg_read_now++ < m_count.count && msgrcv(client_queue, &m_text, sizeof(m_text)-sizeof(long),SendMessage,0) && m_text.client_id!=0) {
           printf("Wiadomość %d/%d, Temat ID: %d, Autor ID: %d, Priorytet: %d\n", msg_read_now,m_count.count,m_text.topic_id,m_text.client_id,m_text.priority);
           printf("%s\n",m_text.text);
-          last_read_message = MAX(last_read_message,m_text.message_id-1);
+          int p = m_text.priority;
+          last_read_message[p] = MAX(last_read_message[p],m_text.message_id+1);
         }
         break;
 

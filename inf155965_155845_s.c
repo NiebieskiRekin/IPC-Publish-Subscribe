@@ -32,8 +32,8 @@ Client logged_in[MAX_CLIENTS];
 int n_logged = 0;
 Topic topics[MAX_TOPICS];
 int n_topics = 0;
-Message messages[MAX_MESSAGES];
-int n_messages = 0;
+Message messages[N_PRIORITIES][MAX_MESSAGES];
+int n_messages[N_PRIORITIES];
 SubInfo subscriptions[MAX_SUBSCRIPTIONS];
 
 key_t server_key;
@@ -78,15 +78,18 @@ void init(void) {
     }
 
   // Inicjalizacja wiadomości tekstowych
-  for (int i=0; i<MAX_MESSAGES; i++){
-    messages[i].client_id = 0;
-    messages[i].priority = 0;
-    messages[i].topic_id = 0;
-    messages[i].type = SendMessage;
-    messages[i].message_id = 0;
+  for (int j=0; j<N_PRIORITIES; j++){
+    n_messages[j] = 0;
+    for (int i=0; i<MAX_MESSAGES; i++){
+      messages[j][i].client_id = 0;
+      messages[j][i].priority = 0;
+      messages[j][i].topic_id = 0;
+      messages[j][i].type = SendMessage;
+      messages[j][i].message_id = 0;
 
-    for (int j=0; j<MAX_MESSAGE_LENGTH+1; j++){
-      messages[i].text[j] = '\0';
+      for (int k=0; k<MAX_MESSAGE_LENGTH+1; k++){
+        messages[j][i].text[k] = '\0';
+      }
     }
   }
 }
@@ -224,11 +227,13 @@ int handle_receive_text(void){
     return -1;
   }
 
-  messages[n_messages].client_id = m_text.client_id;
-  messages[n_messages].priority = m_text.priority;
-  messages[n_messages].topic_id = m_text.topic_id;
-  strcpy(messages[n_messages].text,m_text.text);  
-  n_messages++;
+  int p = m_text.priority;
+  messages[p][n_messages[p]].client_id = m_text.client_id;
+  messages[p][n_messages[p]].priority = m_text.priority;
+  messages[p][n_messages[p]].topic_id = m_text.topic_id;
+  strcpy(messages[p][n_messages[p]].text,m_text.text);  
+  n_messages[p]++;
+
 
   return 0;
 }
@@ -253,12 +258,19 @@ int handle_send_text(void){
   Message* msg_buf[MAX_MESSAGES];
   int n_buf = 0;
 
-  for (int i=MIN(m_read.last_read,0);i<MAX_MESSAGES;i++){
-    for (int j=0;j<n_sub;j++){
-      if (messages[i].topic_id == client_sub[j]->topic_id 
-          && messages[i].priority >= m_read.priority 
-          && !author_blocked(&messages[i],client_sub[j])){
-        msg_buf[n_buf++] = messages+i;
+  for (int p=m_read.priority; p<N_PRIORITIES; p++){
+    for (int i=m_read.last_read[p];i<MAX_MESSAGES;i++){
+      for (int j=0;j<n_sub;j++){
+      if (messages[p][i].topic_id == client_sub[j]->topic_id && !author_blocked(&messages[p][i],client_sub[j])){
+          if (client_sub[j]->type == Temporary){
+            if (client_sub[j]->duration == 0){
+              break;
+            } else {
+              client_sub[j]->duration--;
+            }
+          }
+          msg_buf[n_buf++] = &messages[p][i];
+      }
       }
     }
   }

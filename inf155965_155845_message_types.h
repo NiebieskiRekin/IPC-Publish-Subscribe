@@ -19,6 +19,7 @@
 #define MAX_TOPIC_LENTH 127
 #define MAX_BLOCKED_USERS 16
 #define MAX_MESSAGE_LENGTH 2047
+#define N_PRIORITIES 3
 
 enum MessageType {
   Login = 1,
@@ -117,7 +118,7 @@ typedef struct {
   long type;     // Typ komunikatu
   int client_id; // ID klienta
   int priority;  // priorytet wiadomości
-  int last_read; // ID ostatniej odczytanej wiadomości
+  int last_read[N_PRIORITIES]; // ID ostatniej odczytanej wiadomości
 } ReadMessage;
 
 #endif // MESSAGE_TYPES
