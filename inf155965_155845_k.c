@@ -193,6 +193,29 @@ int main(void) {
         break;
 
       case '5': // Zablokuj użytkownika
+        m_block_user.client_id = client_id;
+
+        printf("Podaj ID blokowanego użytkownika: ");
+        getline(&line,&len,stdin);
+        sscanf(line, " %d ",&m_block_user.block_id);
+
+        printf("Podaj ID tematu, poprzez który użytkownik nie będzie mógł się komunikować. \nUstaw wartość 0 dla wszystkich tematów: ");
+        getline(&line,&len,stdin);
+        sscanf(line, " %d ",&m_block_user.topic_id);
+
+        msgsnd(server_queue,&m_block_user,sizeof(m_block_user)-sizeof(long),0);
+        msgrcv(client_queue,&m_block_user,sizeof(m_block_user)-sizeof(long),BlockUser,0);
+        
+        if (m_block_user.block_id == 0){
+          printf("Niepowodzenie.\n");
+        } else {
+          printf("Użytkownik o ID: %d został zablokowany ",m_block_user.block_id);
+          if (m_block_user.topic_id == 0){
+            printf("globalnie.\n");
+          } else {
+            printf("na temat ID: %d.\n", m_block_user.topic_id);
+          }
+        }
         break;
       
       case ' ':

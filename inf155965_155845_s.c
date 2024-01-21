@@ -135,6 +135,84 @@ int topic_exists(int topic_id) {
   return (topic_id>0 && topic_id<MAX_TOPICS && topics[topic_id - 1].topic_id != 0);
 }
 
+int handle_block_user(void){
+  printf("Blokowanie użytkownika.");
+
+  // check if both users exist
+  if (!(client_logged(m_block_user.client_id))){
+    printf("Blokujący użytkownik nie istnieje.\n");
+    return -1;
+  }
+  if (!client_logged(m_block_user.block_id)) {
+    printf("Blokowany użytkownik nie istnieje.\n");
+    m_block_user.block_id = 0;
+    msgsnd(logged_in[m_block_user.client_id-1].queue,&m_block_user,sizeof(m_block_user)-sizeof(long),0);
+    return -1;
+  }
+
+  // match topic id or apply for all their topics
+  if (m_block_user.topic_id == 0){
+    // GLOBAL BLOCK
+    // find all subscriptions of the blocking user
+    for (int i=0; i<MAX_SUBSCRIPTIONS; i++){
+        // apply for all their topics
+        if (subscriptions[i].client_id == m_block_user.client_id){
+          // add blocked user id to the array on the first empty slot
+          int j=0;
+          while (subscriptions[i].blocked_ids[j]!=0){
+            if (j>=MAX_BLOCKED_USERS){
+              m_block_user.block_id = 0;
+              msgsnd(logged_in[m_block_user.client_id-1].queue,&m_block_user,sizeof(m_block_user)-sizeof(long),0);
+              printf("Przepełnienie listy zablokowanych użytkowników.\n");
+              return -1;
+            }
+            j++;
+          }
+          subscriptions[i].blocked_ids[j] = m_block_user.block_id;
+        }
+    }
+  } else {
+    // per Topic block
+    // find the subscription in question for the blocking user
+    if (!topic_exists(m_block_user.topic_id)){
+      printf("Temat nie istnieje.\n");
+      return -1;
+    }
+
+    for (int i=0; i<MAX_SUBSCRIPTIONS; i++){
+        if (subscriptions[i].client_id == m_block_user.client_id &&
+            subscriptions[i].topic_id == m_block_user.topic_id){
+          // add blocked user id to the array on the first empty slot
+          int j=0;
+          while (subscriptions[i].blocked_ids[j]!=0){
+            if (j>=MAX_BLOCKED_USERS){
+              m_block_user.block_id = 0;
+              msgsnd(logged_in[m_block_user.client_id-1].queue,&m_block_user,sizeof(m_block_user)-sizeof(long),0);
+              printf("Przepełnienie listy zablokowanych użytkowników.\n");
+              return -1;
+            }
+            j++;
+          }
+          subscriptions[i].blocked_ids[j] = m_block_user.block_id;
+          break;
+        }
+    }
+  }
+
+  printf("Użytkownik %d zablokował %d.", m_block_user.client_id, m_block_user.block_id);
+  msgsnd(logged_in[m_block_user.client_id-1].queue,&m_block_user,sizeof(m_block_user)-sizeof(long),0);
+  return 0;
+}
+
+int author_blocked(Message* msg, SubInfo* sub){
+  for (int i=0; i<MAX_BLOCKED_USERS; i++){
+    if (sub->blocked_ids[i] == msg->client_id){
+      return 1;
+    }
+  }
+  return 0;
+}
+
 int handle_receive_text(void){
   printf("Nowa wiadomość.\n");
   if (m_text.client_id == 0 || !client_logged(m_text.client_id)) {
@@ -163,7 +241,7 @@ int handle_send_text(void){
     return -1;
   }
 
-  SubInfo* client_sub[16];
+  SubInfo* client_sub[MAX_SUBSCRIPTIONS];
   int n_sub = 0;
 
   for (int i=0; i<MAX_SUBSCRIPTIONS; i++){
@@ -178,7 +256,9 @@ int handle_send_text(void){
 
   for (int i=MIN(m_read.last_read,0);i<MAX_MESSAGES;i++){
     for (int j=0;j<n_sub;j++){
-      if (messages[i].topic_id == client_sub[j]->topic_id && messages[i].priority >= m_read.priority){
+      if (messages[i].topic_id == client_sub[j]->topic_id 
+          && messages[i].priority >= m_read.priority 
+          && !author_blocked(&messages[i],client_sub[j])){
         msg_buf[n_buf++] = messages+i;
       }
     }
@@ -381,7 +461,7 @@ int main(void) {
     else if (msgrcv(server_queue, &m_block_user,
                     sizeof(m_block_user) - sizeof(long), BlockUser,
                     IPC_NOWAIT) != -1) {
-      // TODO
+      handle_block_user();
     }
 
   } // end while(1)
