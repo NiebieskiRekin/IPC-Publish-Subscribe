@@ -22,35 +22,35 @@
 1. Uruchom VSCode
 2. Pobierz rozszerzenia:
 
-   ![Rozszerzenia](cmake_debug.png)
+   ![Rozszerzenia](assets/cmake_debug.png)
 
 3. Zrestartuj VSCode i otwórz sklonowany folder projektu
 4. Wybierz zainstalowany Kit kompilatora (powinno znaleźć automatycznie [Scan for kits])
 5. Otwórz zakładkę *CMake* z paska po lewej:
 
-   ![CMake bar](cmake_bar.png)
+   ![CMake bar](assets/cmake_bar.png)
 
 6. W nowo otwartej karcie po najechaniu na zakładkę __PROJECT OUTLINE__ wybierz opcję `Configure all projects`
 
-   ![Cmake configure](cmake_configure.png)
+   ![Cmake configure](assets/cmake_configure.png)
 
    Powinien powstać nowy folder *build*
 7. Wybierz `Build all projects`
 
-   ![Cmake build](cmake_build.png)
+   ![Cmake build](assets/cmake_build.png)
 
 8. Otwórz zakładkę *Run and Debug* z paska po lewej:
 
-   ![Run and debug](run_debug.png)
+   ![Run and debug](assets/run_debug.png)
 
 9. Wybierz odpowienią configurację w zależności od programu, można wybrać wielokronie jedna po drugiej.
 
-   ![Debug config](debug_config.png)
+   ![Debug config](assets/debug_config.png)
 
    Uruchom zielonym trójkątem lub F5.
 10. Powinien uruchomić się debugger. 
 
-   ![Debugger](debugger_okno.png)
+   ![Debugger](assets/debugger_okno.png)
 
    1. Przechodzenie do kolejnych linii kodu i sterowanie wykonywaniem kodu
    2. Podgląd na zmienne, jeśli globalne nie są widoczne to można je dodać w zakładce Watch
