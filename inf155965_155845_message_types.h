@@ -27,6 +27,7 @@ enum MessageType {
   SendMessage = 4,
   BlockUser = 5,
   ReadMessages = 6,
+  MessageReadCount = 7,
 };
 
 enum SubscriptionType {
@@ -93,11 +94,17 @@ typedef struct {
 
 typedef struct {
   long type;                     // Typ komunikatu
+  int message_id;                // Identyfikator wiadomości
   int topic_id;                  // Identyfikator tematu
   int client_id;                 // ID klienta
   char text[MAX_MESSAGE_LENGTH]; // Treść wiadomości
   int priority;                  // Priorytet wiadomości
 } Message;
+
+typedef struct {
+  long type;
+  int count;
+} MessageCount;
 
 typedef struct {
   long type;     // Typ komunikatu

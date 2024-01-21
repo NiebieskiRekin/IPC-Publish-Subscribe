@@ -24,6 +24,7 @@ SubscriptionStatus m_sub_stat = {.type = Subscription};
 NewTopicMessage m_new_topic = {.type = NewTopic};
 NewTopicStatus m_topic_status = {.type = NewTopic};
 Message m_text = {.type = SendMessage};
+MessageCount m_count = {.type = MessageReadCount};
 BlockUserMessage m_block_user = {.type = BlockUser};
 ReadMessage m_read = {.type = ReadMessages};
 
@@ -82,9 +83,10 @@ void init(void) {
     messages[i].priority = 0;
     messages[i].topic_id = 0;
     messages[i].type = SendMessage;
+    messages[i].message_id = 0;
 
     for (int j=0; j<MAX_MESSAGE_LENGTH-1; j++){
-      messages[i].text[j] = ' ';
+      messages[i].text[j] = '\0';
     }
     messages[i].text[MAX_MESSAGE_LENGTH-1] = '\0';
   }
@@ -171,18 +173,26 @@ int handle_send_text(void){
       }
   }
 
+  Message* msg_buf[MAX_MESSAGES];
+  int n_buf = 0;
+
   for (int i=MIN(m_read.last_read,0);i<MAX_MESSAGES;i++){
     for (int j=0;j<n_sub;j++){
-      if (messages[i].topic_id == client_sub[j]->topic_id){
-        m_text.client_id = messages[i].client_id;
-        m_text.topic_id = messages[i].topic_id;
-        m_text.priority = messages[i].priority;
-        strcpy(m_text.text,messages[i].text);
-        msgsnd(logged_in[m_text.client_id-1].queue,&m_text,sizeof(m_text)-sizeof(long),0);
+      if (messages[i].topic_id == client_sub[j]->topic_id && messages[i].priority >= m_read.priority){
+        msg_buf[n_buf++] = messages+i;
       }
     }
   }
+  m_count.count = n_buf;
+  msgsnd(logged_in[m_read.client_id-1].queue,&m_count,sizeof(m_count)-sizeof(long),0);
 
+  for (int i=0; i<n_buf; i++){
+    m_text.client_id = msg_buf[i]->client_id;
+    m_text.topic_id = msg_buf[i]->topic_id;
+    m_text.priority = msg_buf[i]->priority;
+    strcpy(m_text.text,msg_buf[i]->text);
+    msgsnd(logged_in[m_read.client_id-1].queue,&m_text,sizeof(m_text)-sizeof(long),0);
+  }
   return 0;
 }
 
