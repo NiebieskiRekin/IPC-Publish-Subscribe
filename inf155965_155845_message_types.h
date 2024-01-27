@@ -29,14 +29,17 @@ enum MessageType {
   BlockUser = 5,
   ReadMessages = 6,
   MessageReadCount = 7,
+  AsyncMessage = 8,
 };
 
 enum SubscriptionType {
   Unsubscribed = 0,
-  Permanent = 1,
-  Temporary = 2,
-  Oversubscribed = 3,
-  UnknownTopic = 4,
+  PermanentAtRequest = 1, 
+  PermanentAsSoonAsReceived = 3,
+  TemporaryAtRequest = 2,
+  TemporaryAsSoonAsReceived = 4,
+  Oversubscribed = 8,
+  UnknownTopic = 9,
 };
 
 typedef struct {

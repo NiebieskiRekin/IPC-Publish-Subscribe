@@ -12,9 +12,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/msg.h>
+#include <sys/param.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/param.h>
 #include <unistd.h>
 
 LoginMessage m_login = {.type = Login};
@@ -68,33 +68,43 @@ void init(void) {
 
   // Inicjalizacja subskrybcji
   for (int j = 0; j < MAX_SUBSCRIPTIONS; j++) {
-      subscriptions[j].client_id = 0;
-      subscriptions[j].duration = 0;
-      subscriptions[j].type = Unsubscribed;
-      subscriptions[j].topic_id = 0;
-      for (int k = 0; k < MAX_BLOCKED_USERS; k++) {
-        subscriptions[j].blocked_ids[k] = 0;
-      }
+    subscriptions[j].client_id = 0;
+    subscriptions[j].duration = 0;
+    subscriptions[j].type = Unsubscribed;
+    subscriptions[j].topic_id = 0;
+    for (int k = 0; k < MAX_BLOCKED_USERS; k++) {
+      subscriptions[j].blocked_ids[k] = 0;
     }
+  }
 
   // Inicjalizacja wiadomości tekstowych
-  for (int j=0; j<N_PRIORITIES; j++){
+  for (int j = 0; j < N_PRIORITIES; j++) {
     n_messages[j] = 0;
-    for (int i=0; i<MAX_MESSAGES; i++){
+    for (int i = 0; i < MAX_MESSAGES; i++) {
       messages[j][i].client_id = 0;
       messages[j][i].priority = 0;
       messages[j][i].topic_id = 0;
       messages[j][i].type = SendMessage;
       messages[j][i].message_id = 0;
 
-      for (int k=0; k<MAX_MESSAGE_LENGTH+1; k++){
+      for (int k = 0; k < MAX_MESSAGE_LENGTH + 1; k++) {
         messages[j][i].text[k] = '\0';
       }
     }
   }
 }
 
-int is_duplicate_name(char name[MAX_USERNAME_LENGTH+1]) {
+int is_sub_async(SubInfo *s) {
+  switch (s->type) {
+  case TemporaryAsSoonAsReceived:
+  case PermanentAsSoonAsReceived:
+    return 1;
+  default:
+    return 0;
+  }
+}
+
+int is_duplicate_name(char name[MAX_USERNAME_LENGTH + 1]) {
   for (int i = 0; i < MAX_CLIENTS; i++) {
     if (strcmp(name, logged_in[i].name) == 0) {
       return 1;
@@ -103,7 +113,7 @@ int is_duplicate_name(char name[MAX_USERNAME_LENGTH+1]) {
   return 0;
 }
 
-int is_duplicate_topic(char topic[MAX_TOPIC_LENTH+1]) {
+int is_duplicate_topic(char topic[MAX_TOPIC_LENTH + 1]) {
   for (int i = 0; i < MAX_TOPICS; i++) {
     if (strcmp(topic, topics[i].topic_name) == 0) {
       return 1;
@@ -115,13 +125,13 @@ int is_duplicate_topic(char topic[MAX_TOPIC_LENTH+1]) {
 // Zwraca obecną subskrybcję tematu dla danego klienta lub następny wolny slot
 SubInfo *get_client_subscription(int client_id, int topic_id) {
   for (int i = 0; i < MAX_SUBSCRIPTIONS; i++) {
-    SubInfo *sub = subscriptions+i;
+    SubInfo *sub = subscriptions + i;
     if (sub->client_id == client_id && sub->topic_id == topic_id) {
       return sub;
     }
   }
   for (int i = 0; i < MAX_SUBSCRIPTIONS; i++) {
-    SubInfo *sub = subscriptions+i;
+    SubInfo *sub = subscriptions + i;
     if (sub->client_id == 0) {
       return sub;
     }
@@ -130,98 +140,105 @@ SubInfo *get_client_subscription(int client_id, int topic_id) {
 }
 
 int client_logged(int client_id) {
-  return (client_id>0 && client_id<MAX_CLIENTS && logged_in[client_id - 1].client_id != 0);
+  return (client_id > 0 && client_id < MAX_CLIENTS &&
+          logged_in[client_id - 1].client_id != 0);
 }
 
 int topic_exists(int topic_id) {
-  return (topic_id>0 && topic_id<MAX_TOPICS && topics[topic_id - 1].topic_id != 0);
+  return (topic_id > 0 && topic_id < MAX_TOPICS &&
+          topics[topic_id - 1].topic_id != 0);
 }
 
-int handle_block_user(void){
+int handle_block_user(void) {
   printf("Blokowanie użytkownika.");
 
   // check if both users exist
-  if (!(client_logged(m_block_user.client_id))){
+  if (!(client_logged(m_block_user.client_id))) {
     printf("Blokujący użytkownik nie istnieje.\n");
     return -1;
   }
   if (!client_logged(m_block_user.block_id)) {
     printf("Blokowany użytkownik nie istnieje.\n");
     m_block_user.block_id = 0;
-    msgsnd(logged_in[m_block_user.client_id-1].queue,&m_block_user,sizeof(m_block_user)-sizeof(long),0);
+    msgsnd(logged_in[m_block_user.client_id - 1].queue, &m_block_user,
+           sizeof(m_block_user) - sizeof(long), 0);
     return -1;
   }
 
   // match topic id or apply for all their topics
-  if (m_block_user.topic_id == 0){
+  if (m_block_user.topic_id == 0) {
     // GLOBAL BLOCK
     // find all subscriptions of the blocking user
-    for (int i=0; i<MAX_SUBSCRIPTIONS; i++){
-        // apply for all their topics
-        if (subscriptions[i].client_id == m_block_user.client_id){
-          // add blocked user id to the array on the first empty slot
-          int j=0;
-          while (subscriptions[i].blocked_ids[j]!=0){
-            if (j>=MAX_BLOCKED_USERS){
-              m_block_user.block_id = 0;
-              msgsnd(logged_in[m_block_user.client_id-1].queue,&m_block_user,sizeof(m_block_user)-sizeof(long),0);
-              printf("Przepełnienie listy zablokowanych użytkowników.\n");
-              return -1;
-            }
-            j++;
+    for (int i = 0; i < MAX_SUBSCRIPTIONS; i++) {
+      // apply for all their topics
+      if (subscriptions[i].client_id == m_block_user.client_id) {
+        // add blocked user id to the array on the first empty slot
+        int j = 0;
+        while (subscriptions[i].blocked_ids[j] != 0) {
+          if (j >= MAX_BLOCKED_USERS) {
+            m_block_user.block_id = 0;
+            msgsnd(logged_in[m_block_user.client_id - 1].queue, &m_block_user,
+                   sizeof(m_block_user) - sizeof(long), 0);
+            printf("Przepełnienie listy zablokowanych użytkowników.\n");
+            return -1;
           }
-          subscriptions[i].blocked_ids[j] = m_block_user.block_id;
+          j++;
         }
+        subscriptions[i].blocked_ids[j] = m_block_user.block_id;
+      }
     }
   } else {
     // per Topic block
     // find the subscription in question for the blocking user
-    if (!topic_exists(m_block_user.topic_id)){
+    if (!topic_exists(m_block_user.topic_id)) {
       printf("Temat nie istnieje.\n");
       return -1;
     }
 
-    for (int i=0; i<MAX_SUBSCRIPTIONS; i++){
-        if (subscriptions[i].client_id == m_block_user.client_id &&
-            subscriptions[i].topic_id == m_block_user.topic_id){
-          // add blocked user id to the array on the first empty slot
-          int j=0;
-          while (subscriptions[i].blocked_ids[j]!=0){
-            if (j>=MAX_BLOCKED_USERS){
-              m_block_user.block_id = 0;
-              msgsnd(logged_in[m_block_user.client_id-1].queue,&m_block_user,sizeof(m_block_user)-sizeof(long),0);
-              printf("Przepełnienie listy zablokowanych użytkowników.\n");
-              return -1;
-            }
-            j++;
+    for (int i = 0; i < MAX_SUBSCRIPTIONS; i++) {
+      if (subscriptions[i].client_id == m_block_user.client_id &&
+          subscriptions[i].topic_id == m_block_user.topic_id) {
+        // add blocked user id to the array on the first empty slot
+        int j = 0;
+        while (subscriptions[i].blocked_ids[j] != 0) {
+          if (j >= MAX_BLOCKED_USERS) {
+            m_block_user.block_id = 0;
+            msgsnd(logged_in[m_block_user.client_id - 1].queue, &m_block_user,
+                   sizeof(m_block_user) - sizeof(long), 0);
+            printf("Przepełnienie listy zablokowanych użytkowników.\n");
+            return -1;
           }
-          subscriptions[i].blocked_ids[j] = m_block_user.block_id;
-          break;
+          j++;
         }
+        subscriptions[i].blocked_ids[j] = m_block_user.block_id;
+        break;
+      }
     }
   }
 
-  printf("Użytkownik %d zablokował %d.", m_block_user.client_id, m_block_user.block_id);
-  msgsnd(logged_in[m_block_user.client_id-1].queue,&m_block_user,sizeof(m_block_user)-sizeof(long),0);
+  printf("Użytkownik %d zablokował %d.", m_block_user.client_id,
+         m_block_user.block_id);
+  msgsnd(logged_in[m_block_user.client_id - 1].queue, &m_block_user,
+         sizeof(m_block_user) - sizeof(long), 0);
   return 0;
 }
 
-int author_blocked(Message* msg, SubInfo* sub){
-  for (int i=0; i<MAX_BLOCKED_USERS; i++){
-    if (sub->blocked_ids[i] == msg->client_id){
+int author_blocked(Message *msg, SubInfo *sub) {
+  for (int i = 0; i < MAX_BLOCKED_USERS; i++) {
+    if (sub->blocked_ids[i] == msg->client_id) {
       return 1;
     }
   }
   return 0;
 }
 
-int handle_receive_text(void){
+int handle_receive_text(void) {
   printf("Nowa wiadomość.\n");
   if (m_text.client_id == 0 || !client_logged(m_text.client_id)) {
     printf("Nieznany klient. ID: %d\n", m_text.client_id);
     return -1;
   }
-  
+
   if (!topic_exists(m_text.topic_id)) {
     printf("Nieznany temat. ID: %d\n", m_text.topic_id);
     return -1;
@@ -231,70 +248,86 @@ int handle_receive_text(void){
   messages[p][n_messages[p]].client_id = m_text.client_id;
   messages[p][n_messages[p]].priority = m_text.priority;
   messages[p][n_messages[p]].topic_id = m_text.topic_id;
-  strcpy(messages[p][n_messages[p]].text,m_text.text);  
+  strcpy(messages[p][n_messages[p]].text, m_text.text);
   n_messages[p]++;
 
+  // Send to all subscriptions of the topic that are asynchronous
+  for (int i = 0; i < MAX_SUBSCRIPTIONS; i++) {
+    if (subscriptions[i].topic_id == m_text.topic_id &&
+        subscriptions[i].client_id != m_text.client_id && 
+        is_sub_async(subscriptions + i) &&
+        !author_blocked(&m_text, subscriptions + i)) {
+      m_text.type = AsyncMessage;
+      msgsnd(logged_in[(subscriptions + i)->client_id - 1].queue, &m_text,
+             sizeof(m_text) - sizeof(long), 0);
+    }
+  }
 
   return 0;
 }
 
-int handle_send_text(void){
+int handle_send_text(void) {
   printf("Prośba o przesłanie wiadomości.\n");
   if (m_read.client_id == 0 || !client_logged(m_read.client_id)) {
     printf("Nieznany klient. ID: %d\n", m_read.client_id);
     return -1;
   }
 
-  SubInfo* client_sub[MAX_SUBSCRIPTIONS];
+  SubInfo *client_sub[MAX_SUBSCRIPTIONS];
   int n_sub = 0;
 
-  for (int i=0; i<MAX_SUBSCRIPTIONS; i++){
-      if (subscriptions[i].client_id == m_read.client_id){
-        client_sub[n_sub] = subscriptions+i;
-        n_sub++;
-      }
+  for (int i = 0; i < MAX_SUBSCRIPTIONS; i++) {
+    if (subscriptions[i].client_id == m_read.client_id &&
+        !is_sub_async(subscriptions + i)) {
+      client_sub[n_sub] = subscriptions + i;
+      n_sub++;
+    }
   }
 
-  Message* msg_buf[MAX_MESSAGES];
+  Message *msg_buf[MAX_MESSAGES];
   int n_buf = 0;
 
-  for (int p=m_read.priority; p<N_PRIORITIES; p++){
-    for (int i=m_read.last_read[p];i<MAX_MESSAGES;i++){
-      for (int j=0;j<n_sub;j++){
-      if (messages[p][i].topic_id == client_sub[j]->topic_id && !author_blocked(&messages[p][i],client_sub[j])){
-          if (client_sub[j]->type == Temporary){
-            if (client_sub[j]->duration == 0){
+  for (int p = m_read.priority; p < N_PRIORITIES; p++) {
+    for (int i = m_read.last_read[p]; i < MAX_MESSAGES; i++) {
+      for (int j = 0; j < n_sub; j++) {
+        if (messages[p][i].topic_id == client_sub[j]->topic_id &&
+            !author_blocked(&messages[p][i], client_sub[j])) {
+          if (client_sub[j]->type == TemporaryAtRequest) {
+            if (client_sub[j]->duration == 0) {
               break;
             } else {
               client_sub[j]->duration--;
             }
           }
           msg_buf[n_buf++] = &messages[p][i];
-      }
+        }
       }
     }
   }
   m_count.count = n_buf;
-  msgsnd(logged_in[m_read.client_id-1].queue,&m_count,sizeof(m_count)-sizeof(long),0);
+  msgsnd(logged_in[m_read.client_id - 1].queue, &m_count,
+         sizeof(m_count) - sizeof(long), 0);
 
-  for (int i=0; i<n_buf; i++){
+  for (int i = 0; i < n_buf; i++) {
     m_text.client_id = msg_buf[i]->client_id;
     m_text.topic_id = msg_buf[i]->topic_id;
     m_text.priority = msg_buf[i]->priority;
-    strcpy(m_text.text,msg_buf[i]->text);
-    msgsnd(logged_in[m_read.client_id-1].queue,&m_text,sizeof(m_text)-sizeof(long),0);
+    strcpy(m_text.text, msg_buf[i]->text);
+    msgsnd(logged_in[m_read.client_id - 1].queue, &m_text,
+           sizeof(m_text) - sizeof(long), 0);
   }
   return 0;
 }
 
 int handle_subscription(void) {
   printf("Działanie na subskrybcji\n");
-  if (m_subscription.client_id == 0 || !client_logged(m_subscription.client_id)) {
+  if (m_subscription.client_id == 0 ||
+      !client_logged(m_subscription.client_id)) {
     printf("Nieznany klient. ID: %d\n", m_subscription.client_id);
     return -1;
   }
 
-  int client = m_subscription.client_id -1;
+  int client = m_subscription.client_id - 1;
   m_sub_stat.client_id = m_subscription.client_id;
   m_sub_stat.topic_id = m_subscription.topic_id;
 
@@ -319,33 +352,36 @@ int handle_subscription(void) {
     return -1;
   }
 
-  switch (m_subscription.sub){
-    case Temporary:
-      sub_info->duration = MAX(sub_info->duration+m_subscription.duration,0);
-      sub_info->client_id = m_subscription.client_id;
-      break;
-    case Unsubscribed:
-      sub_info->client_id = 0;
-      for (int i=0; i<MAX_BLOCKED_USERS; i++){
-        sub_info->blocked_ids[i] = 0;
-      }
-      sub_info->duration = 0;
-      break;
-    case Permanent:
-      sub_info->duration = 0;
-      sub_info->client_id = m_subscription.client_id;
-      break;
-    default:
-      return -1;
-      break;
+  switch (m_subscription.sub) {
+  case TemporaryAtRequest:
+  case TemporaryAsSoonAsReceived:
+    sub_info->duration = MAX(sub_info->duration + m_subscription.duration, 0);
+    sub_info->client_id = m_subscription.client_id;
+    break;
+  case Unsubscribed:
+    sub_info->client_id = 0;
+    for (int i = 0; i < MAX_BLOCKED_USERS; i++) {
+      sub_info->blocked_ids[i] = 0;
+    }
+    sub_info->duration = 0;
+    break;
+  case PermanentAtRequest:
+  case PermanentAsSoonAsReceived:
+    sub_info->duration = 0;
+    sub_info->client_id = m_subscription.client_id;
+    break;
+  default:
+    return -1;
+    break;
   }
 
   sub_info->type = m_subscription.sub;
   m_sub_stat.sub = m_subscription.sub;
   m_sub_stat.duration = sub_info->duration;
   sub_info->topic_id = m_subscription.topic_id;
-  printf("Subskrybcja %d, długość: %d, ",sub_info->type,sub_info->duration);
-  printf("klient ID: %d, Temat ID: %d\n",sub_info->client_id,m_sub_stat.topic_id);
+  printf("Subskrybcja %d, długość: %d, ", sub_info->type, sub_info->duration);
+  printf("klient ID: %d, Temat ID: %d\n", sub_info->client_id,
+         m_sub_stat.topic_id);
 
   msgsnd(logged_in[client].queue, &m_sub_stat,
          sizeof(m_sub_stat) - sizeof(long), 0);
