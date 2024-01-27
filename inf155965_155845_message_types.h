@@ -20,6 +20,7 @@
 #define MAX_BLOCKED_USERS 16
 #define MAX_MESSAGE_LENGTH 2047
 #define N_PRIORITIES 3
+#define INTERRUPT_INPUT 0
 
 enum MessageType {
   Login = 1,

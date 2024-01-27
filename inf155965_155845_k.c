@@ -15,6 +15,7 @@
 #include <string.h>
 #include <sys/msg.h>
 #include <sys/param.h>
+#include <sys/sem.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -29,6 +30,23 @@ Message m_text = {.type = SendMessage};
 MessageCount m_count = {.type = MessageReadCount};
 BlockUserMessage m_block_user = {.type = BlockUser};
 ReadMessage m_read = {.type = ReadMessages};
+static struct sembuf semaphore_buf = {.sem_num = 0, .sem_flg = 0};
+
+void opusc(int semid) {
+  semaphore_buf.sem_op = -1;
+  if (semop(semid, &semaphore_buf, 1) == -1) {
+    perror("Opuszczenie semafora");
+    exit(1);
+  }
+}
+
+void podnies(int semid) {
+  semaphore_buf.sem_op = 1;
+  if (semop(semid, &semaphore_buf, 1) == -1) {
+    perror("Podnoszenie semafora");
+    exit(1);
+  }
+}
 
 int client_queue;
 int client_id;
@@ -36,6 +54,7 @@ char username[MAX_USERNAME_LENGTH + 1];
 int last_read_message[N_PRIORITIES] = {0, 0, 0};
 char *line = NULL;
 pid_t child;
+int sem_UI;
 
 void clean_exit(int signo) {
   msgctl(client_queue, IPC_RMID, NULL);
@@ -43,6 +62,7 @@ void clean_exit(int signo) {
   if (child > 0) {
     kill(child, 9);
   }
+  semctl(sem_UI, 0, IPC_RMID);
   exit(signo);
 }
 
@@ -82,6 +102,12 @@ int main(void) {
     printf("Wysłano wiadomość logowania.\n");
 
     client_queue = msgget(user_queue_key, 0600 | IPC_CREAT);
+    sem_UI = semget(IPC_PRIVATE, 1, 0600 | IPC_CREAT);
+    semaphore_buf.sem_op = 1+INTERRUPT_INPUT;
+    if (semop(sem_UI, &semaphore_buf, 1) == -1){
+      perror("Inicjalizacja semafora nieudana\n");
+      exit(1);
+    }
     msgrcv(client_queue, &m_login_status, sizeof(m_login_status) - sizeof(long),
            Login, 0);
 
@@ -104,10 +130,15 @@ int main(void) {
   } else if (child == 0) {
     while (1) {
       if (msgrcv(client_queue, &m_text, sizeof(m_text) - sizeof(long),
-                      AsyncMessage, 0) && m_text.client_id != 0) {
-        printf("Nowa wiadomość, Temat ID: %d, Autor ID: %d, Priorytet: %d\n",
+                 AsyncMessage, 0) &&
+          m_text.client_id != 0) {
+        opusc(sem_UI);
+        printf("\n---------Nowa wiadomość--------\n"
+               "Temat ID: %d, Autor ID: %d, Priorytet: %d\n",
                m_text.topic_id, m_text.client_id, m_text.priority);
         printf("%s\n", m_text.text);
+        printf("---------------------------------\n");
+        podnies(sem_UI);
       }
     }
   } else {
@@ -121,17 +152,25 @@ int main(void) {
       printf("[5] Zablokuj użytkownika\n");
       printf("[q] Wyjście\n");
 
+      opusc(sem_UI);
       do {
         printf("> ");
         getline(&line, &len, stdin);
-      } while(sscanf(line, " %c ", &action) != 1);
+      } while (sscanf(line, " %c ", &action) != 1);
+      podnies(sem_UI);
 
       switch (action) {
 
       case '1': // Nowy temat
         m_new_topic.client_id = client_id;
         printf("Podaj nazwę tematu: \n");
-        getline(&line, &len, stdin);
+        opusc(sem_UI);
+        do {
+          printf("> ");
+          getline(&line, &len, stdin);
+        } while (line[0] == '\n');
+        podnies(sem_UI);
+
         // Trim and copy up to n
         int i = 0;
         while (isspace(line[i])) {
@@ -161,30 +200,49 @@ int main(void) {
       case '2': // Subskrybcja
         m_subscription.client_id = client_id;
         printf("Podaj ID tematu:\n");
-        getline(&line, &len, stdin);
-        sscanf(line, " %d ", &m_subscription.topic_id);
-        m_subscription.sub = Oversubscribed;
-        printf("[0] Odsubskrybuj,\n"
-               "[1] Zasubskrybuj trwale ,\n"
-               "[2] Zasubskrybuj tymczasowo \n");
+        opusc(sem_UI);
         do {
-          printf("Podaj rodzaj działania: ");
+          printf("> ");
           getline(&line, &len, stdin);
-          sscanf(line, " %d ", (int *)(&m_subscription.sub));
-        } while (m_subscription.sub > 2);
+        } while (sscanf(line, " %d ", &m_subscription.topic_id) != 1 &&
+                 m_subscription.topic_id <= 0);
+        podnies(sem_UI);
+
+        m_subscription.sub = Oversubscribed;
+        printf("[0] Odsubskrybuj temat,\n"
+               "[1] Zasubskrybuj temat trwale,\n"
+               "[2] Zasubskrybuj temat tymczasowo \n");
+        opusc(sem_UI);
+        do {
+          printf("> ");
+          getline(&line, &len, stdin);
+        } while (sscanf(line, " %d ", (int *)(&m_subscription.sub)) != 1 &&
+                 m_subscription.sub > 2);
+        podnies(sem_UI);
 
         switch (m_subscription.sub) {
         case TemporaryAtRequest:
-          printf("Podaj długość subskrybcji: ");
-          getline(&line, &len, stdin);
-          sscanf(line, " %d ", &m_subscription.duration);
+          printf("Podaj długość subskrybcji:\n");
+          opusc(sem_UI);
+          do {
+            printf("> ");
+            getline(&line, &len, stdin);
+          } while (sscanf(line, " %d ", &m_subscription.duration) != 1 &&
+                   m_subscription.duration <= 0);
+          podnies(sem_UI);
+
           printf("Określ sposób przesyłania wiadomości: \n");
           printf("[1] Prześlij, gdy nadeślę zapytanie, \n");
           printf("[2] Prześlij natychmiast po otrzymaniu \n");
-          getline(&line, &len, stdin);
           {
             int temp;
-            sscanf(line, " %d ", &temp);
+            opusc(sem_UI);
+            do {
+              printf("> ");
+              getline(&line, &len, stdin);
+            } while (sscanf(line, " %d ", &temp) != 1 &&
+                     (temp < 1 || temp > 2));
+            podnies(sem_UI);
             switch (temp) {
             case 1:
               m_subscription.sub += 0;
@@ -196,14 +254,18 @@ int main(void) {
           }
           break;
         case PermanentAtRequest:
-          m_subscription.duration = 0;
           printf("Określ sposób przesyłania wiadomości: \n");
           printf("[1] Prześlij, gdy nadeślę zapytanie, \n");
           printf("[2] Prześlij natychmiast po otrzymaniu \n");
-          getline(&line, &len, stdin);
           {
             int temp;
-            sscanf(line, " %d ", &temp);
+            opusc(sem_UI);
+            do {
+              printf("> ");
+              getline(&line, &len, stdin);
+            } while (sscanf(line, " %d ", &temp) != 1 &&
+                     (temp < 1 || temp > 2));
+            podnies(sem_UI);
             switch (temp) {
             case 1:
               m_subscription.sub += 0;
@@ -213,6 +275,7 @@ int main(void) {
               break;
             }
           }
+          m_subscription.duration = 0;
           break;
         default:
           break;
@@ -258,25 +321,35 @@ int main(void) {
 
       case '3': // Nowa wiadomość
         m_text.client_id = client_id;
-        printf("Podaj ID tematu, na który zostanie wysłana wiadomość: ");
-        getline(&line, &len, stdin);
-        sscanf(line, " %d ", &m_text.topic_id);
+        printf("Podaj ID tematu, na który zostanie wysłana wiadomość:\n");
+        opusc(sem_UI);
+        do {
+          printf("> ");
+          getline(&line, &len, stdin);
+        } while(sscanf(line, " %d ", &m_text.topic_id) != 1 && m_text.topic_id <= 0);
+        podnies(sem_UI);
 
-        printf("Podaj priorytet wiadomości [1-3]: ");
-        getline(&line, &len, stdin);
-        sscanf(line, " %d ", &m_text.priority);
-        m_text.priority = MAX(MIN(m_text.priority, 3), 1);
+        printf("Podaj priorytet wiadomości [1-3]:\n");
+        opusc(sem_UI);
+        do {
+          printf("> ");
+          getline(&line, &len, stdin);
+        } while(sscanf(line, " %d ", &m_text.priority)!=1);
+        podnies(sem_UI);
+        m_text.priority = MAX(MIN(m_text.priority, N_PRIORITIES), 1);
 
-        printf("Podaj treść wiadomości: \n");
+        printf("Podaj treść wiadomości:\n");
         for (int i = 0; i < MAX_MESSAGE_LENGTH + 1; i++)
           m_text.text[i] = '\0';
 
+        opusc(sem_UI);
         int char_count = 0;
         while (char_count < MAX_MESSAGE_LENGTH && getline(&line, &len, stdin) &&
                line[0] != '\n') {
           strncat(m_text.text, line, MAX_MESSAGE_LENGTH - char_count - 1);
           char_count += strlen(line);
         }
+        podnies(sem_UI);
 
         msgsnd(server_queue, &m_text, sizeof(m_text) - sizeof(long), 0);
         printf("\nWysłano wiadomość.\n");
@@ -284,10 +357,14 @@ int main(void) {
 
       case '4': // Odczytaj wiadomości
         m_read.client_id = client_id;
-        printf("Podaj priorytet wiadomości [1-3]: ");
-        getline(&line, &len, stdin);
-        sscanf(line, " %d ", &m_read.priority);
-        m_read.priority = MAX(MIN(m_read.priority, 3), 1);
+        printf("Podaj priorytet wiadomości [1-%d]: \n", N_PRIORITIES);
+        opusc(sem_UI);
+        do {
+          printf("> ");
+          getline(&line, &len, stdin);
+        } while (sscanf(line, " %d ", &m_read.priority) != 1);
+        podnies(sem_UI);
+        m_read.priority = MAX(MIN(m_read.priority, N_PRIORITIES), 1);
 
         for (int i = 0; i < N_PRIORITIES; i++) {
           m_read.last_read[i] = last_read_message[i];
@@ -297,6 +374,14 @@ int main(void) {
 
         msgrcv(client_queue, &m_count, sizeof(m_count) - sizeof(long),
                MessageReadCount, 0);
+
+        if (m_count.count == 0){
+          printf("\n----Brak nowych wiadomości-----\n");
+        } else if (m_count.count == 1){
+          printf("\n---------Nowa wiadomość--------\n");
+        } else {
+          printf("\n-------%d nowe wiadomości------\n", m_count.count);
+        }
 
         while (msg_read_now++ < m_count.count &&
                msgrcv(client_queue, &m_text, sizeof(m_text) - sizeof(long),
@@ -310,19 +395,27 @@ int main(void) {
           last_read_message[p] =
               MAX(last_read_message[p], m_text.message_id + 1);
         }
+        printf("---------------------------------\n");
         break;
 
       case '5': // Zablokuj użytkownika
         m_block_user.client_id = client_id;
 
-        printf("Podaj ID blokowanego użytkownika: ");
-        getline(&line, &len, stdin);
-        sscanf(line, " %d ", &m_block_user.block_id);
+        printf("Podaj ID blokowanego użytkownika:\n");
+        opusc(sem_UI);
+        do {
+          printf("> ");
+          getline(&line, &len, stdin);
+        } while (sscanf(line, " %d ", &m_block_user.block_id) != 1 && m_block_user.block_id <=0);
+        podnies(sem_UI);
 
-        printf("Podaj ID tematu, poprzez który użytkownik nie będzie mógł się "
-               "komunikować. \nUstaw wartość [0] dla wszystkich tematów: ");
-        getline(&line, &len, stdin);
-        sscanf(line, " %d ", &m_block_user.topic_id);
+        printf("Podaj ID tematu, poprzez który użytkownik nie będzie mógł się komunikować.\n"
+               "Ustaw wartość [0] dla wszystkich tematów:\n");
+        opusc(sem_UI);
+        do {
+          getline(&line, &len, stdin);
+        } while(sscanf(line, " %d ", &m_block_user.topic_id) != 1 && m_block_user.topic_id <=0);
+        podnies(sem_UI);
 
         msgsnd(server_queue, &m_block_user, sizeof(m_block_user) - sizeof(long),
                0);
