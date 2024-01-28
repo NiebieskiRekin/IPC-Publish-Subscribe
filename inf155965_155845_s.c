@@ -254,7 +254,7 @@ int handle_receive_text(void) {
   // Send to all subscriptions of the topic that are asynchronous
   for (int i = 0; i < MAX_SUBSCRIPTIONS; i++) {
     if (subscriptions[i].topic_id == m_text.topic_id &&
-        subscriptions[i].client_id != m_text.client_id && 
+        subscriptions[i].client_id != m_text.client_id &&
         is_sub_async(subscriptions + i) &&
         !author_blocked(&m_text, subscriptions + i)) {
       m_text.type = AsyncMessage;
@@ -291,6 +291,7 @@ int handle_send_text(void) {
     for (int i = m_read.last_read[p]; i < MAX_MESSAGES; i++) {
       for (int j = 0; j < n_sub; j++) {
         if (messages[p][i].topic_id == client_sub[j]->topic_id &&
+            client_sub[j]->client_id != messages[p][i].client_id &&
             !author_blocked(&messages[p][i], client_sub[j])) {
           if (client_sub[j]->type == TemporaryAtRequest) {
             if (client_sub[j]->duration == 0) {

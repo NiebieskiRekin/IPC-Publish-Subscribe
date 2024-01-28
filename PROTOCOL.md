@@ -18,14 +18,17 @@ enum MessageType {
   BlockUser = 5,
   ReadMessages = 6,
   MessageReadCount = 7,
+  AsyncMessage = 8,
 };
 
 enum SubscriptionType {
   Unsubscribed = 0,
-  Permanent = 1,
-  Temporary = 2,
-  OversubscribedTopic = 3,
-  UnknownTopic = 4,
+  PermanentAtRequest = 1, 
+  PermanentAsSoonAsReceived = 3,
+  TemporaryAtRequest = 2,
+  TemporaryAsSoonAsReceived = 4,
+  Oversubscribed = 8,
+  UnknownTopic = 9,
 };
 ```
 ```c
@@ -39,7 +42,7 @@ typedef struct {
   int client_id;              // Identyfikator użytkownika
   int topic_id;               // Identyfikator tematu
   enum SubscriptionType type; // Informacje o subskrybcjach danych klientów
-  int duration; // Pozostały czas trwania subskrybcji przejściowej
+  int duration;               // Długość subskrybcji przejściowej
   int blocked_ids[MAX_BLOCKED_USERS]; // Zablokowani użytkownicy
 } SubInfo;                            // Struktura informacji o subskrybentach
 
@@ -66,7 +69,7 @@ int n_messages[N_PRIORITIES] = {0,0,0};       // Liczba wiadomości w systemie
 SubInfo subscriptions[MAX_SUBSCRIPTIONS];     // Informacje o subskrybcjach
 ```
 
-### Domyślne wartości parametrów wielkości struktur danych
+### Domyślne wartości parametrów programu
 ```c
 #define MAX_CLIENTS 16
 #define MAX_TOPICS 128
@@ -77,6 +80,7 @@ SubInfo subscriptions[MAX_SUBSCRIPTIONS];     // Informacje o subskrybcjach
 #define MAX_BLOCKED_USERS 16
 #define MAX_MESSAGE_LENGTH 2047
 #define N_PRIORITIES 3
+#define INTERRUPT_INPUT 0
 ```
 
 ### Architektura systemu
@@ -147,13 +151,21 @@ SubInfo subscriptions[MAX_SUBSCRIPTIONS];     // Informacje o subskrybcjach
     int duration;              // Długość trwania subskrybcji
   } SubscriptionMessage;  
   ```
-  - dla subskrypcji przejściowej (np. temat 123 na 4 wiadomości)
+  - dla subskrypcji przejściowej, gdzie wiadomości są przesyłane po wysłaniu zapytania (w sposób synchroniczny), np. temat 123 na 4 wiadomości
     ```c
-    SubscriptionMessage m_sub_temp = {Subscription, ..., 123, Temporary, 4};
+    SubscriptionMessage m_tmp_s = {Subscription, ..., 123, TemporaryAtRequest, 4};
     ```
-  - dla subskrybcji trwałej (np. temat 123), pole `duration` nie jest wykorzystane
+  - dla subskrypcji przejściowej, gdzie wiadomości są przesyłane natychmiast (w sposób asynchroniczny), np. temat 123 na 4 wiadomości
     ```c
-    SubscriptionMessage m_sub_perm = {Subscription, ... , 123, Permanent, 0};
+    SubscriptionMessage m_tmp_a = {Subscription, ..., 123, TemporaryAsSoonAsReceived, 4};
+    ```
+  - dla subskrybcji trwałej synchronicznej (np. temat 123), pole `duration` nie jest wykorzystane
+    ```c
+    SubscriptionMessage m_per_s = {Subscription, ... , 123, PermanentAtRequest, 0};
+    ```
+  - dla subskrybcji trwałej asynchronicznej (np. temat 123), pole `duration` nie jest wykorzystane
+    ```c
+    SubscriptionMessage m_per_a = {Subscription, ... , 123, PermanentAsSoonAsReceived, 0};
     ```
 - Serwer przechowuje informacje o subskrybcjach klientów na dany temat w tablicy:  
   ```c
@@ -169,13 +181,17 @@ SubInfo subscriptions[MAX_SUBSCRIPTIONS];     // Informacje o subskrybcjach
 - Maksymalnie w systemie może być jednocześnie `MAX_SUBSCRIPTIONS` subskrybcji. 
 - Klient może posiadać co najwyżej jedną subskrybcję danego tematu.
 - Jeśli dany klient posiada już subskrypcję tematu: (obecna &rarr; wysłana)
-  - `Temporary` &rarr; `Temporary`: przedłużenie o `duration`, bądź skrócenie dla ujemnych wartości
-  - `Temporary` &rarr; `Permanent`: zamiana na `Permanent`
-  - `Permanent` &rarr; `Permanent`: brak zmian
-  - `Permanent` &rarr; `Temporary`: zamiana na `Temporary` o długości `duration`
+  1. W zależności od długości subskrybcji:
+    + `Temporary*` &rarr; `Temporary*`: przedłużenie o `duration`, bądź skrócenie dla ujemnych wartości
+    + `Temporary*` &rarr; `Permanent*`: zamiana na `Permanent`
+    + `Permanent*` &rarr; `Permanent*`: brak zmian
+    + `Permanent*` &rarr; `Temporary*`: zamiana na `Temporary` o długości `duration`
+  2. W zależności od sposobu przesyłania wiadomości:
+    + `*AsSoonAsReceived` &rarr; `*AtRequest`: zamiana asynchronicznej w synchroniczną
+    + `*AtRequest` &rarr; `*AsSoonAsReceived`: zamiana synchronicznej w asynchroniczną
 - Aby odsubskrybować temat (np. 123) należy wysłać komunikat:
   ```c
-  SubscriptionMessage m_unsub = {Subscription, ..., 123, Unsubscribed};
+  SubscriptionMessage m_unsub = {Subscription, ..., 123, Unsubscribed, -1};
   ```
 - Serwer po otrzymaniu wiadomości odsyła informację zwrotną, która odzwierciedla obecny stan subskrypcji tematu:
   ```c
@@ -249,7 +265,9 @@ SubInfo subscriptions[MAX_SUBSCRIPTIONS];     // Informacje o subskrybcjach
   ```
 - Pole `message_id` nie jest wykorzystywane przy tworzeniu wiadomości. Służy do identyfikacji wiadomości przez serwer przy rozsyłaniu.
 - Wiadomości są zapisywane w globalnej tablicy `Message messages[N_PRIORITIES][MAX_MESSAGES]` w zależności od priorytetu.
-- Do czasu przesłania zapytania o przesłanie nowych wiadomości nie są one przesyłane dalej.
+- W zależności od preferencji subskrybcji danego klienta:
+  - Subskrybcja synchroniczna `*AtRequest`: do czasu przesłania zapytania o przesłanie nowych wiadomości nie są one przesyłane dalej.
+  - Subskrybcja asynchroniczna `*AsSoonAsReceived`: wiadomości są przesyłane natychmiast do klienta po pojawieniu się w systemie.
 
 ## Odbiór wiadomości w sposób synchroniczny 
 - W celu otrzymania wiadomości napisanych w tematach subskrybowanych przez danego klienta należy wysłać wiadomość:
@@ -276,6 +294,25 @@ SubInfo subscriptions[MAX_SUBSCRIPTIONS];     // Informacje o subskrybcjach
     ```c
     Message m_text = {.type=SendMessage,.message_id=...,...};
     ```
+
+## Odbiór wiadomości w sposób asynchroniczny 
+- Po zasubskrybowaniu tematu w sposób asynchroniczny serwer może rozesłać wiadomość do klienta, gdy tylko serwer otrzyma nową wiadomość na ten temat.
+- Program klienta cały czas sprawdza w tle w swojej kolejce wiadomości czy nie pojawiły się nowe wiadomości w formacie:
+  ```c
+  Message m_async_text = {.type=AsyncMessage,...};
+  ```
+- Wiadomości są wysyłane i odbierane natychmiast, jednak ich wyświetlenie na ekranie może zostać opóźnione w zależności od parametru `INTERRUPT_INPUT`:
+  - dla `INTERRUPT_INPUT=0`: wyświetlenie wiadomości nigdy nie przerywa wpisywania danych przez standardowe wejście.
+  - dla `INTERRUPT_INPUT=1`: wyświetlenie wiadomości może nastąpić podczas wpisywania danych przez standardowe wejście. Wpisywany tekst pozostaje ciągły, przykładowo w sytuacji:
+    ```c
+    > abc                // <- wpisywanie przez standardowe wejście
+    ---Nowa wiadomość--- // <- pojawia się nowa wiadomość
+    ...
+    -------------------
+    def\n                // <- kontynuacja wpisywania do znaku \n 
+    ```
+    zostaje zinterpretowane jako `abcdef`.
+
    
 ## Zablokowanie użytkownika
 - W celu zablokowanie użytkownika klient powienien wysłać wiadomość o następującym formacie danych:
